@@ -1,0 +1,13 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <!-- Customize your theme here. -->
+        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+        <item name="android:windowBackground">#0A0D14</item>
+        <item name="android:colorBackground">#0A0D14</item>
+        <!-- Android TV / 遥控器焦点描边（API 26+） -->
+        <item name="android:defaultFocusHighlightEnabled" tools:targetApi="o">true</item>
+    </style>
+
+</resources>

@@ -1,0 +1,51 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <!-- TV 外框（圆角矩形） -->
+  <path
+      android:pathData="M24,30h60c3.3,0 6,2.7 6,6v36c0,3.3 -2.7,6 -6,6H24c-3.3,0 -6,-2.7 -6,-6V36c0,-3.3 2.7,-6 6,-6z"
+      android:fillColor="#1a1d28"
+      android:strokeWidth="2.5"
+      android:strokeColor="#4ade80"/>
+  <!-- TV 屏幕内区域 -->
+  <path
+      android:pathData="M22,34h64v34H22z"
+      android:fillColor="#0a0d14"/>
+  <!-- 音符：竖线 -->
+  <path
+      android:pathData="M58,40v22"
+      android:strokeWidth="3"
+      android:strokeColor="#4ade80"
+      android:strokeLineCap="round"/>
+  <!-- 音符：圆头 -->
+  <path
+      android:pathData="M54,62a4,3.5 0,1 1,0.01 0z"
+      android:fillColor="#4ade80"/>
+  <!-- 音符：旗 -->
+  <path
+      android:pathData="M58,40c0,0 8,2 8,8c0,4 -8,4 -8,4"
+      android:strokeWidth="2.5"
+      android:strokeColor="#4ade80"
+      android:strokeLineCap="round"
+      android:fillColor="#00000000"/>
+  <!-- TV 底座 -->
+  <path
+      android:pathData="M44,78h20"
+      android:strokeWidth="3"
+      android:strokeColor="#4ade80"
+      android:strokeLineCap="round"/>
+  <!-- TV 支撑腿左 -->
+  <path
+      android:pathData="M48,78L45,82"
+      android:strokeWidth="2.5"
+      android:strokeColor="#4ade80"
+      android:strokeLineCap="round"/>
+  <!-- TV 支撑腿右 -->
+  <path
+      android:pathData="M60,78L63,82"
+      android:strokeWidth="2.5"
+      android:strokeColor="#4ade80"
+      android:strokeLineCap="round"/>
+</vector>
