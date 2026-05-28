@@ -1,8 +1,17 @@
 package cn.toside.music.mobile.di
 
 import android.content.Context
+import cn.toside.music.mobile.data.store.LibraryStore
+import cn.toside.music.mobile.data.store.ScriptStore
+import cn.toside.music.mobile.data.store.SettingsStore
 import cn.toside.music.mobile.playback.LyricsFetcher
 import cn.toside.music.mobile.playback.PlaybackController
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import cn.toside.music.mobile.source.OtherSourceFinder
 import cn.toside.music.mobile.source.SourceManager
 import cn.toside.music.mobile.source.builtin.BuiltInLyricResolver
@@ -58,9 +67,31 @@ class AppContainer(val appContext: Context) {
     lateinit var playbackController: PlaybackController
         private set
 
+    val scriptStore: ScriptStore by lazy { ScriptStore(appContext, sourceManager) }
+    val libraryStore: LibraryStore by lazy { LibraryStore(appContext) }
+    val settingsStore: SettingsStore by lazy { SettingsStore(appContext) }
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     fun initPlayback() {
         if (!::playbackController.isInitialized) {
             playbackController = PlaybackController(appContext, sourceManager, lyricsFetcher)
+            playbackController.onTrackStarted = { track ->
+                appScope.launch { libraryStore.recordHistory(track) }
+            }
+        }
+    }
+
+    /** Load persisted data and wire settings → playback. Called once at startup. */
+    fun bootstrap() {
+        appScope.launch {
+            settingsStore.loadAll()
+            libraryStore.loadAll()
+            settingsStore.settings.onEach { s ->
+                playbackController.preferredQuality = s.preferredQuality
+                sourceManager.fallbackEnabled = s.fallbackEnabled
+            }.launchIn(appScope)
+            scriptStore.loadAll()
         }
     }
 }

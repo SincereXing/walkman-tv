@@ -14,6 +14,7 @@ class App : Application() {
         container = AppContainer(this)
         // ExoPlayer must be created on the main thread.
         container.initPlayback()
+        container.bootstrap()
     }
 
     companion object {
