@@ -1,13 +1,12 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Base application theme. -->
-    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
-        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
-        <item name="android:windowBackground">#0A0D14</item>
-        <item name="android:colorBackground">#0A0D14</item>
-        <!-- Android TV / 遥控器焦点描边（API 26+） -->
-        <item name="android:defaultFocusHighlightEnabled" tools:targetApi="o">true</item>
+    <!-- Base theme — platform Material, no ActionBar (Compose draws everything). -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg_deep</item>
+        <item name="android:colorBackground">@color/bg_deep</item>
+        <item name="android:statusBarColor">@color/bg_deep</item>
+        <item name="android:navigationBarColor">@color/bg_deep</item>
+        <item name="android:defaultFocusHighlightEnabled" tools:targetApi="o">false</item>
     </style>
 
 </resources>
