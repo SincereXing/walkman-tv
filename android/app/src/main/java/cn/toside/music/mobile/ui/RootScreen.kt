@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,12 +30,19 @@ fun RootScreen(modifier: Modifier = Modifier) {
     var section by remember { mutableStateOf(NavSection.Recommend) }
     var showPlayer by remember { mutableStateOf(false) }
     val recommendFocus = remember { FocusRequester() }
+    val playbackState = appContainer.playbackController.state.collectAsState().value
 
     LaunchedEffect(Unit) { runCatching { recommendFocus.requestFocus() } }
 
     Box(modifier = modifier) {
         Column(Modifier.fillMaxSize()) {
-            TopNav(active = section, onSelect = { section = it }, recommendFocusRequester = recommendFocus)
+            TopNav(
+                active = section,
+                onSelect = { section = it },
+                recommendFocusRequester = recommendFocus,
+                nowPlayingTitle = playbackState.currentTrack?.name,
+                onOpenPlayer = { showPlayer = true },
+            )
             Box(modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
                 val openPlayer = { showPlayer = true }
                 when (section) {

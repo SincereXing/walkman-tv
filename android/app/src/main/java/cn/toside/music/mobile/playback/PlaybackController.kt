@@ -89,7 +89,9 @@ class PlaybackController(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED && !_state.value.isMv) handleEnded()
+                if (playbackState == Player.STATE_ENDED) {
+                    if (_state.value.isMv) exitMv() else handleEnded()
+                }
                 if (playbackState == Player.STATE_READY) {
                     _state.value = _state.value.copy(durationMs = player.duration.coerceAtLeast(0))
                 }

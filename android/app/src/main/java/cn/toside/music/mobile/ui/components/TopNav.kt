@@ -1,6 +1,8 @@
 package cn.toside.music.mobile.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,6 +11,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -32,6 +36,8 @@ fun TopNav(
     onSelect: (NavSection) -> Unit,
     modifier: Modifier = Modifier,
     recommendFocusRequester: FocusRequester? = null,
+    nowPlayingTitle: String? = null,
+    onOpenPlayer: () -> Unit = {},
 ) {
     val pills = listOf(
         NavSection.Recommend,
@@ -78,6 +84,27 @@ fun TopNav(
                     )
                 }
             }
+        }
+
+        // Now-playing chip (only when a track is loaded)
+        if (!nowPlayingTitle.isNullOrEmpty()) {
+            TvPill(
+                onClick = onOpenPlayer,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 7.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(AppColors.AccentGreen))
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        text = nowPlayingTitle,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.width(120.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.width(8.dp))
         }
 
         // Search pill
