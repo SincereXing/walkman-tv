@@ -1,2 +1,2 @@
-rootProject.name = 'cn.toside.music.tv'
+rootProject.name = 'walkman-tv'
 include ':app'
