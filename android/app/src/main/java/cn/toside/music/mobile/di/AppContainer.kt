@@ -82,6 +82,16 @@ class AppContainer(val appContext: Context) {
         }
     }
 
+    /** Fetch a remote text resource (used to import a custom-source script from a URL). */
+    suspend fun fetchText(url: String): String = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        okhttp3.Request.Builder().url(url).build().let { req ->
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
+                resp.body?.string() ?: throw IllegalStateException("空响应")
+            }
+        }
+    }
+
     /** Load persisted data and wire settings → playback. Called once at startup. */
     fun bootstrap() {
         appScope.launch {
