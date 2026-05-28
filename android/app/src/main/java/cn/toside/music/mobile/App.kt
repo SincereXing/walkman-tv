@@ -12,6 +12,8 @@ class App : Application() {
         // Load the QuickJS native lib once for the whole process (custom-source engine).
         QuickJSLoader.init()
         container = AppContainer(this)
+        // ExoPlayer must be created on the main thread.
+        container.initPlayback()
     }
 
     companion object {

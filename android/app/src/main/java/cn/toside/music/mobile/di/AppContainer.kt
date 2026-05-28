@@ -1,8 +1,11 @@
 package cn.toside.music.mobile.di
 
 import android.content.Context
+import cn.toside.music.mobile.playback.LyricsFetcher
+import cn.toside.music.mobile.playback.PlaybackController
 import cn.toside.music.mobile.source.OtherSourceFinder
 import cn.toside.music.mobile.source.SourceManager
+import cn.toside.music.mobile.source.builtin.BuiltInLyricResolver
 import cn.toside.music.mobile.source.builtin.BuiltInResolver
 import cn.toside.music.mobile.source.catalog.Boards
 import cn.toside.music.mobile.source.catalog.CatalogHttp
@@ -40,9 +43,24 @@ class AppContainer(val appContext: Context) {
 
     private val scriptHttp by lazy { ScriptHttpClient(httpClient) }
     private val builtInResolver by lazy { BuiltInResolver(httpClient) }
+    private val builtInLyricResolver by lazy { BuiltInLyricResolver(catalogHttp) }
     private val otherSourceFinder by lazy { OtherSourceFinder(catalogs) }
 
     val sourceManager: SourceManager by lazy {
         SourceManager(preload, scriptHttp, otherSourceFinder, builtInResolver)
+    }
+
+    private val lyricsFetcher by lazy {
+        LyricsFetcher(sourceManager, builtInLyricResolver, otherSourceFinder)
+    }
+
+    /** Created eagerly on the main thread in [App] (ExoPlayer needs a consistent looper). */
+    lateinit var playbackController: PlaybackController
+        private set
+
+    fun initPlayback() {
+        if (!::playbackController.isInitialized) {
+            playbackController = PlaybackController(appContext, sourceManager, lyricsFetcher)
+        }
     }
 }
