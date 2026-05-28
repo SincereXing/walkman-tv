@@ -5,7 +5,7 @@
 ## 模块
 
 ```
-android/app/src/main/java/cn/toside/music/mobile/
+android/app/src/main/java/com/walkman/tv/
 ├── App.kt / MainActivity.kt          应用入口（QuickJSLoader + bootstrap）
 ├── di/AppContainer.kt                手写 DI 容器
 ├── data/model                        Track / SourceID / Quality / UserScript / Playlist / ...

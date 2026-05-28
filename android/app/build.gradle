@@ -3,12 +3,12 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "org.jetbrains.kotlin.plugin.serialization"
 
 android {
-    namespace "cn.toside.music.mobile"
+    namespace "com.walkman.tv"
     compileSdk rootProject.ext.compileSdkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
 
     defaultConfig {
-        applicationId "cn.toside.music.mobile"
+        applicationId "com.walkman.tv"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

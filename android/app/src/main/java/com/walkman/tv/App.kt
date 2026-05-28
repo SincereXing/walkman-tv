@@ -1,0 +1,26 @@
+package com.walkman.tv
+
+import android.app.Application
+import com.walkman.tv.di.AppContainer
+import com.whl.quickjs.android.QuickJSLoader
+
+class App : Application() {
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+        // Load the QuickJS native lib once for the whole process (custom-source engine).
+        QuickJSLoader.init()
+        container = AppContainer(this)
+        // ExoPlayer must be created on the main thread.
+        container.initPlayback()
+        container.bootstrap()
+    }
+
+    companion object {
+        lateinit var instance: App
+            private set
+        lateinit var container: AppContainer
+            private set
+    }
+}
