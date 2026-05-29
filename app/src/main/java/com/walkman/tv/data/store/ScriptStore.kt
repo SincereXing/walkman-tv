@@ -12,7 +12,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
 
 /** Stores imported custom-source scripts and (re)loads enabled ones into [SourceManager]. */
-class ScriptStore(context: Context, private val sourceManager: SourceManager) {
+class ScriptStore(private val context: Context, private val sourceManager: SourceManager) {
     private val store = JsonStore(
         File(context.filesDir, "scripts.json"),
         ListSerializer(UserScript.serializer()),
@@ -22,11 +22,26 @@ class ScriptStore(context: Context, private val sourceManager: SourceManager) {
     private val _scripts = MutableStateFlow<List<UserScript>>(emptyList())
     val scripts: StateFlow<List<UserScript>> = _scripts.asStateFlow()
 
-    /** Load persisted scripts and start the enabled ones. */
+    /** Load persisted scripts and start the enabled ones. On first run, auto-import the bundled
+     *  built_in_v4.js so the app has a working source out of the box. */
     suspend fun loadAll() {
         val list = withContext(Dispatchers.IO) { store.load() }
+        if (list.isEmpty()) {
+            importBundled()
+            return
+        }
         _scripts.value = list
         list.filter { it.enabled }.forEach { sourceManager.load(it) }
+    }
+
+    private suspend fun importBundled() {
+        val raw = withContext(Dispatchers.IO) {
+            runCatching {
+                context.assets.open("script/built_in_v4.js")
+                    .use { it.readBytes().toString(Charsets.UTF_8) }
+            }.getOrNull()
+        } ?: return
+        import(raw)
     }
 
     /** Import a raw script: parse its header, persist, and load it. */

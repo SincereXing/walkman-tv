@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -96,6 +98,20 @@ private fun CircleControl(icon: androidx.compose.ui.graphics.vector.ImageVector,
     }
 }
 
+// Image URLs ported from the RN TV recommend page (Unsplash, small thumbs).
+private object CardImages {
+    const val GUESS = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&q=80"
+    const val DAILY = "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&q=80"
+    const val CHART = "https://images.unsplash.com/photo-1493225255756-d9584f8606e9?w=600&q=80"
+    const val NEW = "https://images.unsplash.com/photo-1619983081563-430f63602796?w=600&q=80"
+    const val ALBUM = "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=600&q=80"
+    const val CLASSIC = "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=600&q=80"
+    const val DRIVE = "https://images.unsplash.com/photo-1525085475163-c65546867694?w=600&q=80"
+    const val VINYL = "https://images.unsplash.com/photo-1605218427368-35b844d95791?w=600&q=80"
+    const val PLAYED = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&q=60"
+    const val LOVE = "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=200&q=60"
+}
+
 @Composable
 private fun RecommendGrid(onNavigate: (NavSection) -> Unit, modifier: Modifier = Modifier) {
     val played by appContainer.libraryStore.history.collectAsState()
@@ -103,62 +119,95 @@ private fun RecommendGrid(onNavigate: (NavSection) -> Unit, modifier: Modifier =
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            BigCard("猜你喜欢", listOf(Color(0xFF3B2A5A), Color(0xFF7A4DBF)), Modifier.weight(1f)) { onNavigate(NavSection.Library) }
-            BigCard("Daily 30", listOf(Color(0xFF1E3A5F), Color(0xFF2E7DBF)), Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
+            BigCard("猜你喜欢", CardImages.GUESS, Modifier.weight(1f)) { onNavigate(NavSection.Library) }
+            BigCard("Daily 30", CardImages.DAILY, Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SmallCard("排行榜", listOf(Color(0xFF5A2A2A), Color(0xFFBF4D4D)), Modifier.weight(1f)) { onNavigate(NavSection.Leaderboard) }
-                SmallCard("新歌", listOf(Color(0xFF2A5A3A), Color(0xFF4DBF7A)), Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
+                SmallCard("排行榜", CardImages.CHART, Modifier.weight(1f)) { onNavigate(NavSection.Leaderboard) }
+                SmallCard("新歌", CardImages.NEW, Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
             }
         }
         Row(modifier = Modifier.fillMaxWidth().height(72.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCard("已播", played.tracks.size, Modifier.weight(1f)) { onNavigate(NavSection.Library) }
-            StatCard("收藏", loved.tracks.size, Modifier.weight(1f)) { onNavigate(NavSection.Library) }
+            StatCard("已播", played.tracks.size, CardImages.PLAYED, Modifier.weight(1f)) { onNavigate(NavSection.Library) }
+            StatCard("收藏", loved.tracks.size, CardImages.LOVE, Modifier.weight(1f)) { onNavigate(NavSection.Library) }
         }
         Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            BigCard("新歌新碟", listOf(Color(0xFF4A3A1E), Color(0xFFBF8A2E)), Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
-            BigCard("经典老歌", listOf(Color(0xFF2A3A4A), Color(0xFF4D7A9F)), Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
+            BigCard("新歌新碟", CardImages.ALBUM, Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
+            BigCard("经典老歌", CardImages.CLASSIC, Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SmallCard("车载热门", listOf(Color(0xFF3A2A4A), Color(0xFF7A4DBF)), Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
-                SmallCard("黑胶专区", listOf(Color(0xFF1A331A), Color(0xFF4ADE80)), Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
+                SmallCard("车载热门", CardImages.DRIVE, Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
+                SmallCard("黑胶专区", CardImages.VINYL, Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
             }
         }
     }
 }
 
 @Composable
-private fun BigCard(title: String, gradient: List<Color>, modifier: Modifier, onClick: () -> Unit) {
+private fun BigCard(title: String, picURL: String, modifier: Modifier, onClick: () -> Unit) {
     TvFocusable(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(14.dp)) {
-        Box(
-            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp))
-                .background(Brush.linearGradient(gradient)),
-            contentAlignment = Alignment.BottomStart,
-        ) {
-            Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(16.dp))
+        Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp))) {
+            AsyncImage(
+                model = picURL, contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            // Bottom-to-top dark overlay so the title is always readable.
+            Box(
+                modifier = Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))),
+                ),
+            )
+            Text(
+                title,
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
+            )
         }
     }
 }
 
 @Composable
-private fun SmallCard(title: String, gradient: List<Color>, modifier: Modifier, onClick: () -> Unit) {
+private fun SmallCard(title: String, picURL: String, modifier: Modifier, onClick: () -> Unit) {
     TvFocusable(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(10.dp)) {
-        Box(
-            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp)).background(Brush.linearGradient(gradient)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp))) {
+            AsyncImage(
+                model = picURL, contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
+            Text(
+                title,
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.align(Alignment.Center),
+            )
         }
     }
 }
 
 @Composable
-private fun StatCard(title: String, count: Int, modifier: Modifier, onClick: () -> Unit) {
+private fun StatCard(title: String, count: Int, picURL: String, modifier: Modifier, onClick: () -> Unit) {
     TvFocusable(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(36.dp)) {
         Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+            modifier = Modifier.fillMaxSize().padding(start = 8.dp, end = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(title, color = AppColors.TextSecondary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            // Small round thumbnail on the left.
+            Box(
+                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(50)),
+            ) {
+                AsyncImage(
+                    model = picURL,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(title, color = AppColors.TextSecondary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             Text("$count", color = AppColors.TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
     }

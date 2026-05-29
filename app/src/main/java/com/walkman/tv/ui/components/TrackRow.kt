@@ -1,5 +1,6 @@
 package com.walkman.tv.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,9 +13,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -65,10 +68,26 @@ fun TrackRow(
                 )
             }
             Spacer(Modifier.width(8.dp))
+            if (track.hasMv) {
+                MvBadge()
+                Spacer(Modifier.width(6.dp))
+            }
             QualityBadge(track.qualities)
             Spacer(Modifier.width(8.dp))
             SourceChip(track.source)
         }
+    }
+}
+
+@Composable
+private fun MvBadge() {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(AppColors.AccentGreen.copy(alpha = 0.18f))
+            .padding(horizontal = 5.dp, vertical = 1.dp),
+    ) {
+        Text("MV", color = AppColors.AccentGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
     }
 }
 

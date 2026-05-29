@@ -74,11 +74,8 @@ fun SonglistScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
         BackHandler { detail = null }
         val (info, tracks) = detail!!
         Column(modifier = modifier.fillMaxSize().padding(top = 8.dp)) {
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                TvPill(onClick = { detail = null }) { Text("返回", fontSize = 13.sp) }
-                Spacer(Modifier.padding(start = 12.dp))
-                Text(info.name, color = AppColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            }
+            // Title only — back-key returns to the grid; no on-screen back button.
+            Text(info.name, color = AppColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             val nowId = appContainer.playbackController.state.collectAsState().value.currentTrack?.id
             TrackList(tracks, modifier = Modifier.fillMaxWidth().weight(1f), nowPlayingId = nowId) { idx ->
                 playList(tracks, idx); onOpenPlayer()

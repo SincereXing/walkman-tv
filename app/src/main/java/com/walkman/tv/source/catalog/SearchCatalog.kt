@@ -87,8 +87,12 @@ private class KuwoSearch(private val http: CatalogHttp) : SongCatalog {
                 }
             }
         }
+
         if (qs.isEmpty()) qs.add(Quality.K128)
         val albumId = decode(d.optString("ALBUMID")).ifEmpty { null }
+        val extras = mutableMapOf<String, String>()
+        // Kuwo: MVFLAG=="1" means the song has an MV; Kuwo's mvId is generally the same rid.
+        if (d.optString("MVFLAG") == "1") extras["mvId"] = songmid
         return Track(
             id = Track.makeID(SourceID.KW, songmid),
             name = decode(d.optString("SONGNAME", "未知")),
@@ -100,6 +104,7 @@ private class KuwoSearch(private val http: CatalogHttp) : SongCatalog {
             duration = d.optString("DURATION").toIntOrNull(),
             picURL = null,
             qualities = qs,
+            extras = extras,
         )
     }
 
@@ -149,6 +154,8 @@ private class KugouSearch(private val http: CatalogHttp) : SongCatalog {
         val albumId = d.opt("AlbumID")?.toString()?.ifEmpty { null }
         val extras = mutableMapOf("hash" to hash)
         albumId?.let { extras["albumId"] = it }
+        // Kugou MV: MvHash is a non-empty string when an MV exists.
+        d.optString("MvHash").ifEmpty { null }?.let { extras["mvId"] = it }
         val pic = d.optString("Image").ifEmpty { null }?.replace("{size}", "240")
         return Track(
             id = Track.makeID(SourceID.KG, songmid),
@@ -193,6 +200,9 @@ private class NetEaseSearch(private val http: CatalogHttp) : SongCatalog {
         val qs = mutableListOf(Quality.K128)
         if (d.optJSONObject("mMusic") != null) qs.add(Quality.K320)
         if (d.optJSONObject("hMusic") != null) qs.add(Quality.FLAC)
+        // NetEase MV: 'mvid' > 0 means an MV exists.
+        val extras = mutableMapOf<String, String>()
+        d.optLong("mvid").takeIf { it > 0 }?.toString()?.let { extras["mvId"] = it }
         return Track(
             id = Track.makeID(SourceID.WY, id),
             name = d.optString("name", "未知"),
@@ -204,6 +214,7 @@ private class NetEaseSearch(private val http: CatalogHttp) : SongCatalog {
             duration = d.optInt("duration").takeIf { it > 0 }?.div(1000),
             picURL = album?.optString("picUrl")?.ifEmpty { null },
             qualities = qs,
+            extras = extras,
         )
     }
 }
@@ -251,6 +262,8 @@ private class QQSearch(private val http: CatalogHttp) : SongCatalog {
         albumMid?.let { extras["albumMid"] = it }
         file.optString("media_mid").ifEmpty { null }?.let { extras["strMediaMid"] = it }
         d.opt("id")?.toString()?.let { extras["songId"] = it }
+        // QQ MV: optional `mv.vid` carries the MV id when present.
+        d.optJSONObject("mv")?.optString("vid")?.ifEmpty { null }?.let { extras["mvId"] = it }
         return Track(
             id = Track.makeID(SourceID.TX, mid),
             name = d.optString("name", "未知"),

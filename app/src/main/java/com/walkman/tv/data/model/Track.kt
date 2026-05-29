@@ -27,6 +27,10 @@ data class Track(
     val intervalText: String
         get() = duration?.let { String.format("%02d:%02d", it / 60, it % 60) } ?: ""
 
+    /** Whether the source carries an MV for this track (set by per-platform search/board builders). */
+    val hasMv: Boolean
+        get() = !extras["mvId"].isNullOrEmpty()
+
     companion object {
         fun makeID(source: SourceID, songmid: String): String = "${source.key}_$songmid"
     }

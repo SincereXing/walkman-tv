@@ -1,8 +1,10 @@
 package com.walkman.tv.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,8 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -20,16 +20,27 @@ import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Border
+import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Icon
+import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.walkman.tv.ui.NavSection
 import com.walkman.tv.ui.theme.AppColors
 
-/** Top navigation bar — brand + section pills + search + settings. */
+/**
+ * Top navigation bar — brand on left, six nav items centered (4 sections + search + settings),
+ * now-playing chip on right. Active item shows green text (no pill); focus state shows a
+ * green pill background and slight scale (D-pad highlight).
+ */
 @Composable
 fun TopNav(
     active: NavSection,
@@ -39,17 +50,42 @@ fun TopNav(
     nowPlayingTitle: String? = null,
     onOpenPlayer: () -> Unit = {},
 ) {
-    val pills = listOf(
-        NavSection.Recommend,
-        NavSection.Leaderboard,
-        NavSection.Songlist,
-        NavSection.Library,
-    )
-    Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Brand
+    Box(modifier = modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp)) {
+        // Left: brand
+        Brand(modifier = Modifier.align(Alignment.CenterStart))
+
+        // Center: 6 nav items
+        Row(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NavItem("推荐", active == NavSection.Recommend, focusRequester = recommendFocusRequester) {
+                onSelect(NavSection.Recommend)
+            }
+            NavItem("排行榜", active == NavSection.Leaderboard) { onSelect(NavSection.Leaderboard) }
+            NavItem("歌单", active == NavSection.Songlist) { onSelect(NavSection.Songlist) }
+            NavItem("我的列表", active == NavSection.Library) { onSelect(NavSection.Library) }
+            NavItem("搜索", active == NavSection.Search, icon = Icons.Filled.Search) { onSelect(NavSection.Search) }
+            NavItemIconOnly(Icons.Filled.Settings, active == NavSection.Settings, contentDescription = "设置") {
+                onSelect(NavSection.Settings)
+            }
+        }
+
+        // Right: now-playing chip (only when a track is loaded)
+        if (!nowPlayingTitle.isNullOrEmpty()) {
+            NowPlayingChip(
+                title = nowPlayingTitle,
+                onClick = onOpenPlayer,
+                modifier = Modifier.align(Alignment.CenterEnd),
+            )
+        }
+    }
+}
+
+@Composable
+private fun Brand(modifier: Modifier = Modifier) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         Icon(
             imageVector = Icons.Outlined.MusicNote,
             contentDescription = null,
@@ -63,72 +99,100 @@ fun TopNav(
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(Modifier.width(20.dp))
+    }
+}
 
-        // Section pills
+@Composable
+private fun NavItem(
+    label: String,
+    selected: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    focusRequester: FocusRequester? = null,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(50)
+    Surface(
+        onClick = onClick,
+        modifier = if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier,
+        shape = ClickableSurfaceDefaults.shape(shape = shape),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = AppColors.AccentGreen,
+            pressedContainerColor = AppColors.AccentGreen,
+            contentColor = if (selected) AppColors.AccentGreen else AppColors.TextPrimary,
+            focusedContentColor = AppColors.BgDeep,
+            pressedContentColor = AppColors.BgDeep,
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(0.dp, Color.Transparent), shape = shape),
+            focusedBorder = Border(BorderStroke(2.dp, AppColors.AccentGreen), shape = shape),
+        ),
+    ) {
         Row(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            pills.forEach { section ->
-                TvPill(
-                    onClick = { onSelect(section) },
-                    selected = active == section,
-                    focusRequester = if (section == NavSection.Recommend) recommendFocusRequester else null,
-                ) {
-                    Text(
-                        text = section.label,
-                        fontSize = 14.sp,
-                        fontWeight = if (active == section) FontWeight.Bold else FontWeight.Medium,
-                    )
-                }
+            if (icon != null) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(5.dp))
             }
+            Text(
+                text = label,
+                fontSize = 15.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            )
         }
+    }
+}
 
-        // Now-playing chip (only when a track is loaded)
-        if (!nowPlayingTitle.isNullOrEmpty()) {
-            TvPill(
-                onClick = onOpenPlayer,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 7.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(AppColors.AccentGreen))
-                    Spacer(Modifier.width(7.dp))
-                    Text(
-                        text = nowPlayingTitle,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.width(120.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.width(8.dp))
+@Composable
+private fun NavItemIconOnly(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = ClickableSurfaceDefaults.shape(shape = CircleShape),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = AppColors.AccentGreen,
+            pressedContainerColor = AppColors.AccentGreen,
+            contentColor = if (selected) AppColors.AccentGreen else AppColors.TextPrimary,
+            focusedContentColor = AppColors.BgDeep,
+            pressedContentColor = AppColors.BgDeep,
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(0.dp, Color.Transparent), shape = CircleShape),
+            focusedBorder = Border(BorderStroke(2.dp, AppColors.AccentGreen), shape = CircleShape),
+        ),
+    ) {
+        Box(modifier = Modifier.padding(10.dp), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(20.dp))
         }
+    }
+}
 
-        // Search pill
-        TvPill(
-            onClick = { onSelect(NavSection.Search) },
-            selected = active == NavSection.Search,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Search, contentDescription = "搜索", modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(text = NavSection.Search.label, fontSize = 13.sp)
-            }
-        }
-        Spacer(Modifier.width(8.dp))
-
-        // Settings gear
-        TvPill(
-            onClick = { onSelect(NavSection.Settings) },
-            selected = active == NavSection.Settings,
-            shape = CircleShape,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp),
-        ) {
-            Icon(Icons.Filled.Settings, contentDescription = "设置", modifier = Modifier.size(22.dp))
+@Composable
+private fun NowPlayingChip(title: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    TvPill(
+        onClick = onClick,
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(AppColors.AccentGreen))
+            Spacer(Modifier.width(7.dp))
+            Text(
+                text = title,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(120.dp),
+            )
         }
     }
 }

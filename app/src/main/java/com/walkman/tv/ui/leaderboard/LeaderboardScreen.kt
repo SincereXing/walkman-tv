@@ -60,10 +60,14 @@ fun LeaderboardScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
     }
 
     Row(modifier = modifier.fillMaxSize().padding(top = 8.dp)) {
-        Column(modifier = Modifier.width(300.dp).fillMaxHeight()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(modifier = Modifier.width(150.dp).fillMaxHeight()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 boardSources.forEach { s ->
-                    TvPill(onClick = { source = s }, selected = source == s) { Text(s.displayName, fontSize = 12.sp) }
+                    TvPill(
+                        onClick = { source = s },
+                        selected = source == s,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                    ) { Text(s.displayName, fontSize = 11.sp) }
                 }
             }
             Spacer(Modifier.padding(top = 6.dp))

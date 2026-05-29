@@ -74,12 +74,12 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     }
 
     if (state.isMv) {
+        // MV mode: back-key exits (handled above). No on-screen exit button.
         Box(modifier = modifier.fillMaxSize().background(AppColors.BgDeep)) {
             AndroidView(
                 factory = { ctx -> PlayerView(ctx).apply { player = controller.player; useController = true } },
                 modifier = Modifier.fillMaxSize(),
             )
-            TvPill(onClick = { controller.exitMv() }, modifier = Modifier.padding(16.dp)) { Text("退出 MV") }
         }
         return
     }
