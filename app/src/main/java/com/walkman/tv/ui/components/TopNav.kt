@@ -58,7 +58,7 @@ fun TopNav(
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = "客厅音乐",
+            text = "随便听",
             color = AppColors.TextPrimary,
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
