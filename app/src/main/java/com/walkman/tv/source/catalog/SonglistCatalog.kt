@@ -58,7 +58,8 @@ private class KuwoSonglist(private val http: CatalogHttp) : SonglistService {
         val groups = mutableListOf<SonglistTagGroup>()
         for (i in 0 until raw.length()) {
             val type = raw.optJSONObject(i) ?: continue
-            val name = type.optString("name").ifEmpty { continue }
+            val name = type.optString("name")
+            if (name.isEmpty()) continue
             val items = type.optJSONArray("data") ?: continue
             val tags = (0 until items.length()).mapNotNull { j ->
                 val item = items.optJSONObject(j) ?: return@mapNotNull null
@@ -288,7 +289,8 @@ private class QQSonglist(private val http: CatalogHttp) : SonglistService {
         val out = mutableListOf<SonglistTagGroup>()
         for (i in 0 until groups.length()) {
             val g = groups.optJSONObject(i) ?: continue
-            val name = g.optString("group_name").ifEmpty { continue }
+            val name = g.optString("group_name")
+            if (name.isEmpty()) continue
             val items = g.optJSONArray("v_item") ?: continue
             val tags = (0 until items.length()).mapNotNull { j ->
                 val item = items.optJSONObject(j) ?: return@mapNotNull null

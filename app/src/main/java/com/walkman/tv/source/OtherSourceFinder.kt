@@ -61,9 +61,12 @@ class OtherSourceFinder(private val searcher: MusicSearcher) {
                 )
             }
             val intervalFiltered = annotated.filter { intervalOk(it.fInterval) }
-            intervalFiltered.firstOrNull { it.fName == fName && includesSinger(it.fSinger) }?.let { picked.add(it); continue }
-            intervalFiltered.firstOrNull { it.fSinger == fSinger && includesName(it.fName) }?.let { picked.add(it); continue }
-            intervalFiltered.firstOrNull { equalsAlbum(it.fAlbum) && includesSinger(it.fSinger) && includesName(it.fName) }?.let { picked.add(it); continue }
+            val hit1 = intervalFiltered.firstOrNull { it.fName == fName && includesSinger(it.fSinger) }
+            if (hit1 != null) { picked.add(hit1); continue }
+            val hit2 = intervalFiltered.firstOrNull { it.fSinger == fSinger && includesName(it.fName) }
+            if (hit2 != null) { picked.add(hit2); continue }
+            val hit3 = intervalFiltered.firstOrNull { equalsAlbum(it.fAlbum) && includesSinger(it.fSinger) && includesName(it.fName) }
+            if (hit3 != null) { picked.add(hit3); continue }
         }
         if (picked.isEmpty()) return emptyList()
 

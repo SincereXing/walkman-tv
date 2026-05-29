@@ -7,7 +7,7 @@ import com.walkman.tv.data.model.Track
 import org.json.JSONObject
 
 /**
- * Resolves MV (music video) URLs per platform, ported from RN `src/utils/musicSdk/*/mv.js`.
+ * Resolves MV (music video) URLs per platform, ported from RN src/utils/musicSdk/(source)/mv.js.
  * Currently supports wy (NetEase) + kw (Kuwo); others return null until ported.
  */
 class MvResolver(private val http: CatalogHttp) {

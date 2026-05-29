@@ -71,7 +71,7 @@ class ScriptStore(context: Context, private val sourceManager: SourceManager) {
         private val headerBlock = Regex("""/\*[\s\S]*?\*/""")
         private val tagLine = Regex("""@(\w+)\s+(.+)""")
 
-        /** Parse the `/** @name … @version … */` header of an lx v4 script. */
+        /** Parse the leading KDoc-style header of an lx v4 script (@name / @version / etc). */
         fun parseHeader(raw: String): Map<String, String> {
             val block = headerBlock.find(raw)?.value ?: return emptyMap()
             val out = mutableMapOf<String, String>()

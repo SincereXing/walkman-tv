@@ -76,6 +76,7 @@ class JsScriptRuntime(
                 // A throw after a successful init is non-fatal; otherwise fail init.
                 if (!inited) failInit(e.message ?: "脚本执行错误")
             }
+            Unit // force lambda return type to Unit; avoids if-without-else type-check error
         }
         return try {
             withTimeout(timeoutMs) { deferred.await() }
