@@ -1,5 +1,6 @@
 package com.walkman.tv.ui.components
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,11 +14,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -25,6 +33,8 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.walkman.tv.data.model.Track
 import com.walkman.tv.ui.theme.AppColors
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** One focusable track row: index, cover, name/singer, quality badge + source chip. */
 @Composable
@@ -91,7 +101,11 @@ private fun MvBadge() {
     }
 }
 
-/** A focusable list of tracks. */
+/**
+ * A focusable list of tracks. Back-key behavior: when the list has been scrolled away from
+ * the top, the first press scrolls back to row 0 and refocuses it; only when already at the
+ * top does back fall through to the parent BackHandler (which navigates out one layer).
+ */
 @Composable
 fun TrackList(
     tracks: List<Track>,
@@ -100,7 +114,26 @@ fun TrackList(
     contentPadding: PaddingValues = PaddingValues(vertical = 8.dp),
     onPlay: (index: Int) -> Unit,
 ) {
+    val listState = rememberLazyListState()
+    val firstFocus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+    val atTop by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }
+    }
+
+    BackHandler(enabled = !atTop) {
+        scope.launch {
+            listState.animateScrollToItem(0)
+            // Wait a frame so item 0 is composed/visible before requesting focus.
+            delay(80)
+            runCatching { firstFocus.requestFocus() }
+        }
+    }
+
     LazyColumn(
+        state = listState,
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(6.dp),
         contentPadding = contentPadding,
@@ -109,6 +142,7 @@ fun TrackList(
             TrackRow(
                 track = track,
                 index = index,
+                modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
                 nowPlaying = track.id == nowPlayingId,
                 onClick = { onPlay(index) },
             )

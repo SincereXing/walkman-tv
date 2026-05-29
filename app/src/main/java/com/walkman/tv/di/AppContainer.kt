@@ -30,6 +30,9 @@ import java.util.concurrent.TimeUnit
  */
 class AppContainer(val appContext: Context) {
 
+    /** Process-wide event bus for hardware-key events (e.g. KEYCODE_MENU). */
+    val events: AppEvents = AppEvents()
+
     val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(12, TimeUnit.SECONDS)

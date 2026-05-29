@@ -1,6 +1,9 @@
 package com.walkman.tv.ui.player
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,21 +44,27 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
+import com.walkman.tv.data.model.Track
 import com.walkman.tv.playback.LyricParser
 import com.walkman.tv.playback.RepeatMode
 import com.walkman.tv.ui.appContainer
 import com.walkman.tv.ui.components.Artwork
+import com.walkman.tv.ui.components.TvFocusable
 import com.walkman.tv.ui.components.TvPill
 import com.walkman.tv.ui.theme.AppColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -66,19 +75,43 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     val love by appContainer.libraryStore.love.collectAsState()
     val scope = rememberCoroutineScope()
     var message by remember { mutableStateOf<String?>(null) }
+    var showMvQueue by remember { mutableStateOf(false) }
 
     val track = state.currentTrack
 
     BackHandler(enabled = true) {
-        if (state.isMv) controller.exitMv() else onClose()
+        when {
+            showMvQueue -> showMvQueue = false
+            state.isMv -> controller.exitMv()
+            else -> onClose()
+        }
+    }
+
+    // While in MV, listen for the remote's Menu key to toggle the queue drawer.
+    LaunchedEffect(state.isMv) {
+        if (!state.isMv) {
+            showMvQueue = false
+            return@LaunchedEffect
+        }
+        appContainer.events.menuKey.collect { showMvQueue = !showMvQueue }
     }
 
     if (state.isMv) {
-        // MV mode: back-key exits (handled above). No on-screen exit button.
+        // MV mode: back-key exits (handled above); Menu key opens the queue drawer.
         Box(modifier = modifier.fillMaxSize().background(AppColors.BgDeep)) {
             AndroidView(
                 factory = { ctx -> PlayerView(ctx).apply { player = controller.player; useController = true } },
                 modifier = Modifier.fillMaxSize(),
+            )
+            MvQueueDrawer(
+                visible = showMvQueue,
+                queue = state.queue,
+                currentIndex = state.index,
+                onSelect = { idx ->
+                    showMvQueue = false
+                    controller.playAt(idx)
+                },
+                modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
         return
@@ -230,4 +263,103 @@ private fun IconPill(
 private fun fmt(ms: Long): String {
     val s = (ms / 1000).toInt()
     return "%02d:%02d".format(s / 60, s % 60)
+}
+
+@Composable
+private fun MvQueueDrawer(
+    visible: Boolean,
+    queue: List<Track>,
+    currentIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val listState = rememberLazyListState()
+    val firstFocus = remember { FocusRequester() }
+
+    // When the drawer opens, scroll to the currently-playing item and focus it.
+    LaunchedEffect(visible) {
+        if (visible && queue.isNotEmpty()) {
+            val target = currentIndex.coerceIn(0, queue.size - 1)
+            runCatching { listState.scrollToItem(target) }
+            delay(80)
+            runCatching { firstFocus.requestFocus() }
+        }
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInHorizontally(initialOffsetX = { it }),
+        exit = slideOutHorizontally(targetOffsetX = { it }),
+        modifier = modifier,
+    ) {
+        Box(modifier = Modifier.fillMaxHeight().width(360.dp).background(AppColors.BgPanel.copy(alpha = 0.95f))) {
+            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                Text(
+                    "播放队列 (${queue.size})",
+                    color = AppColors.TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(10.dp))
+                LazyColumn(
+                    state = listState,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    itemsIndexed(queue, key = { _, t -> t.id }) { idx, track ->
+                        val isCurrent = idx == currentIndex
+                        QueueRow(
+                            track = track,
+                            index = idx,
+                            isCurrent = isCurrent,
+                            modifier = if (isCurrent) Modifier.focusRequester(firstFocus) else Modifier,
+                            onClick = { onSelect(idx) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueueRow(
+    track: Track,
+    index: Int,
+    isCurrent: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    TvFocusable(onClick = onClick, modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "${index + 1}",
+                color = if (isCurrent) AppColors.AccentGreen else AppColors.TextMuted,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.width(22.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    track.name,
+                    color = if (isCurrent) AppColors.AccentGreen else AppColors.TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    track.singer,
+                    color = AppColors.TextMuted,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
 }
