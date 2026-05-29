@@ -1,4 +1,4 @@
-# 客厅音乐（walkman-tv）
+# 随便听（walkman-tv）
 
 原生 Android TV 音乐播放器，使用 **Kotlin + Compose for TV** 重写。逻辑参考 `walkman` 工程（iOS Swift/SwiftUI 版），保留 lx-music v4 自定义源的 **JS 解析逻辑（QuickJS 引擎）**。
 
