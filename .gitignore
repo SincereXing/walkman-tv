@@ -1,8 +1,6 @@
-node_modules/
 .gradle/
-android/.gradle/
-android/app/build/
-android/build/
+build/
+app/build/
 *.apk
 .DS_Store
 .idea/

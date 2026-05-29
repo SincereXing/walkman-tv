@@ -5,7 +5,7 @@
 ## 模块
 
 ```
-android/app/src/main/java/com/walkman/tv/
+app/src/main/java/com/walkman/tv/
 ├── App.kt / MainActivity.kt          应用入口（QuickJSLoader + bootstrap）
 ├── di/AppContainer.kt                手写 DI 容器
 ├── data/model                        Track / SourceID / Quality / UserScript / Playlist / ...
@@ -37,7 +37,7 @@ android/app/src/main/java/com/walkman/tv/
 ## 构建
 
 ```
-cd android && ./gradlew assembleDebug
+./gradlew assembleDebug
 ```
 
 需要 `local.properties` 指向本机 Android SDK；`compileSdk 35`、`minSdk 21`、`targetSdk 34`。
