@@ -22,6 +22,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import com.walkman.tv.ui.components.TopNav
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import com.walkman.tv.ui.leaderboard.LeaderboardScreen
 import com.walkman.tv.ui.library.LibraryScreen
 import com.walkman.tv.ui.player.PlayerScreen
@@ -37,8 +39,15 @@ fun RootScreen(modifier: Modifier = Modifier) {
     var showPlayer by remember { mutableStateOf(false) }
     var showExitDialog by remember { mutableStateOf(false) }
     val recommendFocus = remember { FocusRequester() }
-    val playbackState = appContainer.playbackController.state.collectAsState().value
     val context = LocalContext.current
+
+    // Subscribe only to the now-playing title (via distinctUntilChanged) — without this, the
+    // 500/1000ms position ticker would recompose the entire root and TopNav twice a second.
+    val nowPlayingTitle by remember {
+        appContainer.playbackController.state
+            .map { it.currentTrack?.name }
+            .distinctUntilChanged()
+    }.collectAsState(initial = null)
 
     LaunchedEffect(Unit) { runCatching { recommendFocus.requestFocus() } }
 
@@ -59,7 +68,7 @@ fun RootScreen(modifier: Modifier = Modifier) {
                 active = section,
                 onSelect = { section = it },
                 recommendFocusRequester = recommendFocus,
-                nowPlayingTitle = playbackState.currentTrack?.name,
+                nowPlayingTitle = nowPlayingTitle,
                 onOpenPlayer = { showPlayer = true },
             )
             Box(modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp)) {

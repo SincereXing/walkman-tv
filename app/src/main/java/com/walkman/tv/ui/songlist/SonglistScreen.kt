@@ -1,7 +1,9 @@
 package com.walkman.tv.ui.songlist
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,57 +73,72 @@ fun SonglistScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
         loading = false
     }
 
-    if (detail != null) {
-        BackHandler { detail = null }
-        val (info, tracks) = detail!!
-        Column(modifier = modifier.fillMaxSize().padding(top = 8.dp)) {
-            // Title only — back-key returns to the grid; no on-screen back button.
-            Text(info.name, color = AppColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            val nowId = appContainer.playbackController.state.collectAsState().value.currentTrack?.id
-            TrackList(tracks, modifier = Modifier.fillMaxWidth().weight(1f), nowPlayingId = nowId) { idx ->
-                playList(tracks, idx); onOpenPlayer()
+    // IMPORTANT: keep the grid UI in the composition even when detail is open. If we early-return
+    // here, the LaunchedEffect(source, order, tag) above leaves the composition; on the way back
+    // (detail=null) it re-fires as a fresh effect and re-fetches lists, blowing away the user's
+    // grid scroll position and the previously-focused card. Rendering detail as an overlay keeps
+    // the grid alive (state, focus, fetched lists), so back-navigation is instant and preserves
+    // the selection.
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().padding(top = 8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                songlistSources.forEach { s ->
+                    TvPill(onClick = { source = s }, selected = source == s) { Text(s.displayName, fontSize = 12.sp) }
+                }
+                Spacer(Modifier.padding(start = 8.dp))
+                service?.orders?.forEach { o ->
+                    TvPill(onClick = { order = o }, selected = order?.id == o.id) { Text(o.name, fontSize = 12.sp) }
+                }
             }
-        }
-        return
-    }
-
-    Column(modifier = modifier.fillMaxSize().padding(top = 8.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            songlistSources.forEach { s ->
-                TvPill(onClick = { source = s }, selected = source == s) { Text(s.displayName, fontSize = 12.sp) }
+            Spacer(Modifier.padding(top = 6.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(tags) { t ->
+                    TvPill(onClick = { tag = t }, selected = tag.id == t.id && tag.name == t.name) { Text(t.name, fontSize = 12.sp) }
+                }
             }
-            Spacer(Modifier.padding(start = 8.dp))
-            service?.orders?.forEach { o ->
-                TvPill(onClick = { order = o }, selected = order?.id == o.id) { Text(o.name, fontSize = 12.sp) }
-            }
-        }
-        Spacer(Modifier.padding(top = 6.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(tags) { t ->
-                TvPill(onClick = { tag = t }, selected = tag.id == t.id && tag.name == t.name) { Text(t.name, fontSize = 12.sp) }
-            }
-        }
-        Spacer(Modifier.padding(top = 6.dp))
-        when {
-            loading -> LoadingState(Modifier.fillMaxSize())
-            lists.isNotEmpty() -> LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(lists, key = { it.id }) { sl ->
-                    MediaCard(title = sl.name, picURL = sl.picURL, subtitle = sl.playCount?.let { "▶ $it" }) {
-                        scope.launch {
-                            loadingDetail = true
-                            val d = runCatching { service?.fetchDetail(sl) }.getOrNull()
-                            detail = sl to (d?.tracks ?: emptyList())
-                            loadingDetail = false
+            Spacer(Modifier.padding(top = 6.dp))
+            when {
+                loading -> LoadingState(Modifier.fillMaxSize())
+                lists.isNotEmpty() -> LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                        .focusRestorer(), // restore the previously-focused card on back-nav
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(lists, key = { it.id }) { sl ->
+                        MediaCard(title = sl.name, picURL = sl.picURL, subtitle = sl.playCount?.let { "▶ $it" }) {
+                            scope.launch {
+                                loadingDetail = true
+                                val d = runCatching { service?.fetchDetail(sl) }.getOrNull()
+                                detail = sl to (d?.tracks ?: emptyList())
+                                loadingDetail = false
+                            }
                         }
                     }
                 }
+                else -> EmptyHint("暂无歌单", Modifier.fillMaxSize())
             }
-            else -> EmptyHint("暂无歌单", Modifier.fillMaxSize())
+        }
+
+        // Detail overlay — visually replaces the grid but the grid remains in composition,
+        // preserving scroll position, fetched lists, and focus.
+        if (detail != null) {
+            val (info, tracks) = detail!!
+            BackHandler { detail = null }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(AppColors.BgDeep)
+                    .padding(top = 8.dp),
+            ) {
+                Text(info.name, color = AppColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                val nowId = appContainer.playbackController.state.collectAsState().value.currentTrack?.id
+                TrackList(tracks, modifier = Modifier.fillMaxWidth().weight(1f), nowPlayingId = nowId) { idx ->
+                    playList(tracks, idx); onOpenPlayer()
+                }
+            }
         }
     }
 }
+

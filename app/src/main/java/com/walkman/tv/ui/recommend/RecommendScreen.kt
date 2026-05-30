@@ -63,26 +63,101 @@ private fun NowPlayingPanel(onOpenPlayer: () -> Unit, modifier: Modifier = Modif
     val lyrics by controller.lyrics.collectAsState()
     val track = state.currentTrack
 
-    Column(modifier = modifier.padding(horizontal = 8.dp)) {
-        TvFocusable(onClick = onOpenPlayer, modifier = Modifier.fillMaxWidth().aspectRatio(1f), shape = RoundedCornerShape(14.dp)) {
+    Column(
+        modifier = modifier.padding(horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        // Smaller cover (240dp instead of full panel width), centered.
+        TvFocusable(
+            onClick = onOpenPlayer,
+            modifier = Modifier.size(240.dp),
+            shape = RoundedCornerShape(14.dp),
+        ) {
             Artwork(track?.picURL, modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(14.dp))
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
         if (track != null) {
-            Text(track.name, color = AppColors.TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+            Text(track.name, color = AppColors.TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             Text(track.singer, color = AppColors.TextSecondary, fontSize = 13.sp, maxLines = 1)
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             val active = LyricParser.activeIndex(state.positionMs / 1000.0, lyrics)
             val line = lyrics.getOrNull(active)?.text ?: if (state.resolving) "解析中…" else ""
-            Text(line, color = AppColors.LyricIdle, fontSize = 13.sp, maxLines = 2)
+            Text(line, color = AppColors.LyricIdle, fontSize = 13.sp, maxLines = 1)
         } else {
             Text("暂无播放，去推荐里点歌开始吧", color = AppColors.TextSecondary, fontSize = 14.sp)
         }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Two-line waveform between the lyric and the transport controls.
+        Spacer(Modifier.height(10.dp))
+        MiniLineWaveform(
+            isPlaying = state.isPlaying,
+            modifier = Modifier.fillMaxWidth().height(24.dp),
+        )
+        Spacer(Modifier.height(10.dp))
+        // Controls centered.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             CircleControl(Icons.Filled.SkipPrevious) { controller.prev() }
+            Spacer(Modifier.width(20.dp))
             CircleControl(if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow) { controller.togglePlay() }
+            Spacer(Modifier.width(20.dp))
             CircleControl(Icons.Filled.SkipNext) { controller.next() }
+        }
+    }
+}
+
+/** Two flowing sine wave lines, ~24dp tall, for the recommend NowPlaying panel. */
+@Composable
+private fun MiniLineWaveform(isPlaying: Boolean, modifier: Modifier = Modifier) {
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "rec-wave")
+    val time by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(durationMillis = 1_000_000, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Restart,
+        ),
+        label = "rec-wave-time",
+    )
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        val t = if (isPlaying) time.toDouble() else 0.0
+        val midY = size.height / 2.0
+        val W = size.width.toDouble()
+        // Two layers tuned smaller than the player.
+        val layers = listOf(
+            Triple(0.80f, 110.0, 0.85f) to Pair(0.8f, 1.4f),  // (amp, wavelength, opacity) and (drift, lineWidthDp)
+            Triple(0.50f, 75.0, 0.45f) to Pair(1.3f, 1.0f),
+        )
+        for ((spec, mods) in layers) {
+            val (amp, wl, opacity) = spec
+            val (drift, widthDp) = mods
+            val phase = t * drift * 2.2
+            val pulseBeat = 0.5 + 0.35 * kotlin.math.sin(t * 3.0)
+            val ampPx = (amp * maxOf(0.2, pulseBeat)) * size.height / 2.0
+            val path = androidx.compose.ui.graphics.Path()
+            fun yAt(xx: Double): Float {
+                val env = kotlin.math.sin(xx / W * Math.PI)
+                return (midY + kotlin.math.sin(xx / wl * 2 * Math.PI + phase) * ampPx * env).toFloat()
+            }
+            path.moveTo(0f, yAt(0.0))
+            var x = 0.0
+            while (x <= W) {
+                path.lineTo(x.toFloat(), yAt(x))
+                x += 2.0
+            }
+            drawPath(
+                path = path,
+                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                    colorStops = arrayOf(
+                        0f to AppColors.AccentGreen.copy(alpha = 0f),
+                        0.5f to AppColors.AccentGreen.copy(alpha = opacity),
+                        1f to AppColors.AccentGreen.copy(alpha = 0f),
+                    ),
+                ),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = widthDp.dp.toPx()),
+            )
         }
     }
 }

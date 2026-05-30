@@ -36,11 +36,12 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
-import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -93,7 +94,6 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     val lyrics by controller.lyrics.collectAsState()
     val love by appContainer.libraryStore.love.collectAsState()
     val scope = rememberCoroutineScope()
-    var message by remember { mutableStateOf<String?>(null) }
     var showMvQueue by remember { mutableStateOf(false) }
     val playFocus = remember { FocusRequester() }
 
@@ -117,12 +117,8 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         }
     }
 
-    // While in MV, listen for the remote's Menu key to toggle the queue drawer.
-    LaunchedEffect(state.isMv) {
-        if (!state.isMv) {
-            showMvQueue = false
-            return@LaunchedEffect
-        }
+    // Listen for the remote's Menu key to toggle the queue drawer (works in both audio and MV).
+    LaunchedEffect(Unit) {
         appContainer.events.menuKey.collect { showMvQueue = !showMvQueue }
     }
 
@@ -194,12 +190,10 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 }
             }
 
-            // Status line — quality / origin / warning / resolve / error / transient message.
-            Spacer(Modifier.height(10.dp))
-            StatusLine(state, message)
-
             // Bottom: waveform + progress bar + transport row.
-            Spacer(Modifier.height(8.dp))
+            // (Status line removed — quality is shown in the TransportBar Hi-Res pill below;
+            // the source / origin / message text is no longer surfaced to the player UI.)
+            Spacer(Modifier.height(10.dp))
             Waveform(
                 isPlaying = state.isPlaying,
                 modifier = Modifier.fillMaxWidth().height(40.dp),
@@ -222,23 +216,28 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                         },
                     )
                 },
-                onToggleShuffle = { controller.toggleShuffle() },
                 onToggleFav = { scope.launch { appContainer.libraryStore.toggleFavorite(track) } },
                 onMv = {
                     scope.launch {
-                        message = "正在获取 MV…"
                         val info = runCatching { appContainer.mvResolver.getMvUrl(track) }.getOrNull()
-                        val url = info?.bestUrl()
-                        if (url != null) {
-                            message = null; controller.playMvUrl(url)
-                        } else {
-                            message = "无可用 MV"
-                        }
+                        info?.bestUrl()?.let { controller.playMvUrl(it) }
                     }
                 },
+                onShowQueue = { showMvQueue = true },
                 playFocusRequester = playFocus,
             )
         }
+        // Queue drawer: now available in audio mode too (button) and in MV mode (menu key).
+        MvQueueDrawer(
+            visible = showMvQueue,
+            queue = state.queue,
+            currentIndex = state.index,
+            onSelect = { idx ->
+                showMvQueue = false
+                controller.playAt(idx)
+            },
+            modifier = Modifier.align(Alignment.CenterEnd),
+        )
     }
 }
 
@@ -316,9 +315,10 @@ private data class WaveLayer(
 )
 
 private val waveLayers = listOf(
-    WaveLayer(1.00f, 235f, 0.70f, 2.6f, 0.0f, 0.45f, 1.3f),
-    WaveLayer(0.74f, 165f, 1.10f, 3.4f, 1.1f, 0.85f, 1.1f),
-    WaveLayer(0.52f, 125f, 1.65f, 4.3f, 2.4f, 0.32f, 0.9f),
+    // Front line: brighter / thicker.
+    WaveLayer(0.85f, 185f, 0.90f, 2.8f, 0.0f, 0.85f, 1.4f),
+    // Back line: softer / shorter wavelength for a subtle counter-rhythm.
+    WaveLayer(0.55f, 130f, 1.45f, 3.8f, 1.6f, 0.45f, 1.1f),
 )
 
 /**
@@ -378,28 +378,7 @@ private fun Waveform(isPlaying: Boolean, modifier: Modifier = Modifier) {
     }
 }
 
-// ============== Status + transport =============================================================
-
-@Composable
-private fun StatusLine(state: com.walkman.tv.playback.PlaybackState, message: String?) {
-    val parts = buildList {
-        state.quality?.displayName?.let { add(it to AppColors.AccentGreen) }
-        state.originLabel?.let { add(it to AppColors.TextMuted) }
-        state.warning?.let { add(it to AppColors.SourceMg) }
-        if (state.resolving) add("解析中…" to AppColors.TextMuted)
-        state.error?.let { add(it to AppColors.SourceWy) }
-        message?.let { add(it to AppColors.TextMuted) }
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        parts.forEach { (txt, color) ->
-            Text(txt, color = color, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-        }
-    }
-}
+// ============== Transport ======================================================================
 
 @Composable
 private fun TransportBar(
@@ -409,9 +388,9 @@ private fun TransportBar(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onCycleRepeat: () -> Unit,
-    onToggleShuffle: () -> Unit,
     onToggleFav: () -> Unit,
     onMv: () -> Unit,
+    onShowQueue: () -> Unit,
     playFocusRequester: FocusRequester? = null,
 ) {
     val track = state.currentTrack
@@ -420,20 +399,23 @@ private fun TransportBar(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Left group: source chip + quality
+        // Left: EQ-style icon + Hi-Res pill (mirrors the reference layout).
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            track?.let { com.walkman.tv.ui.components.SourceChip(it.source) }
+            IconPill(Icons.Filled.Tune, onClick = { /* placeholder — settings shortcut later */ })
             state.quality?.let {
-                Text(
-                    it.displayName,
-                    color = AppColors.TextMuted,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                // Selected = true gives the AccentGreenDim background + green text + thin green
+                // outline — same passive-active look as the reference 'Hi-Res ▼' pill.
+                TvPill(
+                    onClick = { /* future: open a quality picker */ },
+                    selected = true,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text(it.displayName, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
         Spacer(modifier = Modifier.weight(1f))
-        // Center group: repeat, prev, PLAY (large), next, shuffle
+        // Center: repeat, prev, PLAY (large green), next, heart.
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             val repeatIcon = if (state.repeatMode == RepeatMode.ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat
             IconPill(repeatIcon, active = state.repeatMode != RepeatMode.OFF, onClick = onCycleRepeat)
@@ -445,17 +427,22 @@ private fun TransportBar(
                 onClick = onTogglePlay,
             )
             IconPill(Icons.Filled.SkipNext, onClick = onNext)
-            IconPill(Icons.Filled.Shuffle, active = state.shuffle, onClick = onToggleShuffle)
-        }
-        Spacer(modifier = Modifier.weight(1f))
-        // Right group: heart + MV
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             IconPill(
                 if (faved) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                 active = faved,
                 onClick = onToggleFav,
             )
-            IconPill(Icons.Filled.Movie, onClick = onMv)
+        }
+        Spacer(modifier = Modifier.weight(1f))
+        // Right: MV pill + playlist hamburger.
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TvPill(
+                onClick = onMv,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Text("MV", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            IconPill(Icons.Filled.QueueMusic, onClick = onShowQueue)
         }
     }
 }
@@ -484,6 +471,9 @@ private fun LyricPane(
         Box(modifier, contentAlignment = Alignment.Center) { Text("暂无歌词", color = AppColors.TextMuted) }
         return
     }
+    // Compute active line on every call but only notify observers when the resulting index
+    // actually changes — the LazyColumn items don't re-evaluate alpha/color/size on every
+    // 1s position tick, only when the active line index advances.
     val active = LyricParser.activeIndex(positionMs / 1000.0, lyrics)
     val listState = rememberLazyListState()
     LaunchedEffect(active) {

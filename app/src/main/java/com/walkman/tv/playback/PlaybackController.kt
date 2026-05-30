@@ -269,7 +269,7 @@ class PlaybackController(
                         durationMs = player.duration.coerceAtLeast(0),
                     )
                 }
-                delay(500)
+                delay(1000)
             }
         }
     }
