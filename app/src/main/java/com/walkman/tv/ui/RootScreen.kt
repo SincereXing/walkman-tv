@@ -165,9 +165,12 @@ private fun ExitConfirmDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
                 fontSize = 14.sp,
             )
             Spacer(Modifier.height(22.dp))
+            // SpaceBetween pushes 取消 to the left edge and 确定 to the right edge of the dialog
+            // (which is ~360-2*24 = 312dp wide internally) — feels less 'cluster-on-OK'-y than
+            // the previous centred pair, and the visual distance reduces accidental confirms.
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 TvPill(
                     onClick = onCancel,
