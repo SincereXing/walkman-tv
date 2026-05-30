@@ -140,6 +140,9 @@ private class KuwoSonglist(private val http: CatalogHttp) : SonglistService {
         if ("ALFLAC" in codes) qs.add(Quality.FLAC)
         if ("HIRFLAC" in codes || "AC4256" in codes) qs.add(Quality.FLAC24)
         if (qs.isEmpty()) { qs.add(Quality.K128); qs.add(Quality.K320) }
+        // Kuwo MV marker is the same in songlist details as in search/board.
+        val extras = mutableMapOf<String, String>()
+        if (d.optString("MVFLAG") == "1") extras["mvId"] = id
         return Track(
             id = Track.makeID(SourceID.KW, id),
             name = decode(d.optString("name", "未知")),
@@ -151,6 +154,7 @@ private class KuwoSonglist(private val http: CatalogHttp) : SonglistService {
             duration = d.optString("duration").toIntOrNull()?.takeIf { it > 0 },
             picURL = null,
             qualities = qs,
+            extras = extras,
         )
     }
 
@@ -471,6 +475,10 @@ private class KugouSonglist(private val http: CatalogHttp) : SonglistService {
         if (qs.isEmpty()) qs.add(Quality.K128)
         val extras = mutableMapOf("hash" to hash)
         albumId?.let { extras["albumId"] = it }
+        // Kugou MV on the album_audio API: mv-related fields live inside audio_info.
+        // Field name varies between API versions — best-effort across both common spellings.
+        val mvKg = audio.optString("mvhash").ifEmpty { audio.optString("mv_hash") }
+        if (mvKg.isNotEmpty()) extras["mvId"] = mvKg
         val pic = albumInfo?.optString("sizable_cover")?.ifEmpty { null }?.replace("{size}", "240")
         return Track(
             id = Track.makeID(SourceID.KG, audioId),

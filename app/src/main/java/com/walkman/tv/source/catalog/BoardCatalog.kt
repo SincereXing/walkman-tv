@@ -94,6 +94,9 @@ private class KuwoBoard(private val http: CatalogHttp) : BoardService {
         if ("AC4256" in codes || "DDJOC768" in codes) qs.add(Quality.FLAC24)
         if (qs.isEmpty()) { qs.add(Quality.K128); qs.add(Quality.K320) }
         val duration = (d.optString("duration").ifEmpty { d.optString("song_duration") }).toIntOrNull()
+        // Kuwo: MVFLAG=="1" means the song has an MV; the mvId is the same rid as the song.
+        val extras = mutableMapOf<String, String>()
+        if (d.optString("MVFLAG") == "1") extras["mvId"] = id
         return Track(
             id = Track.makeID(SourceID.KW, id),
             name = decode(d.optString("name", "未知")),
@@ -105,6 +108,7 @@ private class KuwoBoard(private val http: CatalogHttp) : BoardService {
             duration = duration?.takeIf { it > 0 },
             picURL = null,
             qualities = qs,
+            extras = extras,
         )
     }
 
@@ -154,6 +158,9 @@ internal fun buildNetEaseTrack(d: JSONObject?): Track? {
     val qs = mutableListOf(Quality.K128)
     if (d.optJSONObject("mMusic") != null) qs.add(Quality.K320)
     if (d.optJSONObject("hMusic") != null) qs.add(Quality.FLAC)
+    // NetEase MV: 'mvid' > 0 means an MV exists. Same field name in board / songlist / search.
+    val extras = mutableMapOf<String, String>()
+    d.optLong("mvid").takeIf { it > 0 }?.toString()?.let { extras["mvId"] = it }
     return Track(
         id = Track.makeID(SourceID.WY, id),
         name = d.optString("name", "未知"),
@@ -165,6 +172,7 @@ internal fun buildNetEaseTrack(d: JSONObject?): Track? {
         duration = d.optInt("duration").takeIf { it > 0 }?.div(1000),
         picURL = album?.optString("picUrl")?.ifEmpty { null },
         qualities = qs,
+        extras = extras,
     )
 }
 
@@ -235,6 +243,8 @@ private class KugouBoard(private val http: CatalogHttp) : BoardService {
         if (qs.isEmpty()) qs.add(Quality.K128)
         val extras = mutableMapOf("hash" to hash)
         albumId?.let { extras["albumId"] = it }
+        // Kugou MV: rank API returns `mvhash` (lower-case) as the MV identifier when present.
+        d.optString("mvhash").ifEmpty { null }?.let { extras["mvId"] = it }
         val pic = authors?.optJSONObject(0)?.optString("sizable_avatar")?.ifEmpty { null }?.replace("{size}", "150")
         return Track(
             id = Track.makeID(SourceID.KG, audioId),
@@ -328,6 +338,11 @@ internal fun buildQqTrack(d: JSONObject?): Track? {
     albumMid?.let { extras["albumMid"] = it }
     file.optString("media_mid").ifEmpty { null }?.let { extras["strMediaMid"] = it }
     d.opt("id")?.toString()?.let { extras["songId"] = it }
+    // QQ MV: optional `mv.vid` (search shape) or `mv` as a direct string (toplist shape).
+    d.optJSONObject("mv")?.optString("vid")?.ifEmpty { null }?.let { extras["mvId"] = it }
+    if (!extras.containsKey("mvId")) {
+        d.optString("mv").ifEmpty { null }?.let { extras["mvId"] = it }
+    }
     return Track(
         id = Track.makeID(SourceID.TX, mid),
         name = d.optString("name").ifEmpty { d.optString("title", "未知") },

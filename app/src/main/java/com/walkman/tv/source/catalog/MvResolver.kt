@@ -215,7 +215,11 @@ class MvResolver(private val http: CatalogHttp) {
     // ===================================================================== Migu
 
     /** Migu: c.musicapp.migu.cn/MIGUM2.0/v1.0/content/resourceinfo.do?resourceType=D
-     *  &resourceId=<mvCopyrightId>. Response.resource[0] has widescreenPath / highscreenPath. */
+     *  &resourceId=<mvCopyrightId>. Response.resource[0] has up to three path fields:
+     *   - bluerayPath    -> 1080P (蓝光 — when the MV has an FHD master)
+     *   - highscreenPath -> 720P  (高清)
+     *   - widescreenPath -> 480P  (标清, the lowest)
+     *  We list them highest-first so [MusicVideoInfo.bestUrl] picks blueray when available. */
     private suspend fun migu(track: Track): MusicVideoInfo? {
         val mvId = track.extras["mvId"]?.takeIf { it.isNotEmpty() } ?: return null
         val body = runCatching {
@@ -225,11 +229,18 @@ class MvResolver(private val http: CatalogHttp) {
             ))
         }.getOrNull() ?: return null
         val resource = body.optJSONArray("resource")?.optJSONObject(0) ?: return null
-        val widescreen = resource.optString("widescreenPath").ifEmpty { null }?.let(::buildMguUrl)
-        val highscreen = resource.optString("highscreenPath").ifEmpty { null }?.let(::buildMguUrl)
+        // Highest first; dedupe identical URLs (some MVs return the same link under two tiers).
+        val tiers = listOf(
+            "1080p" to "bluerayPath",
+            "720p"  to "highscreenPath",
+            "480p"  to "widescreenPath",
+        )
         val qualities = mutableListOf<MvQuality>()
-        widescreen?.let { qualities.add(MvQuality("widescreen", it)) }
-        highscreen?.takeIf { it != widescreen }?.let { qualities.add(MvQuality("highscreen", it)) }
+        val seen = HashSet<String>()
+        for ((label, key) in tiers) {
+            val u = resource.optString(key).ifEmpty { null }?.let(::buildMguUrl) ?: continue
+            if (seen.add(u)) qualities.add(MvQuality(label, u))
+        }
         if (qualities.isEmpty()) return null
         return MusicVideoInfo(
             id = mvId,
