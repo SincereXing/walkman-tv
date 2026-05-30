@@ -29,9 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -123,11 +121,12 @@ fun SearchScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
                 }
             }
             Spacer(Modifier.padding(top = 12.dp))
-            SearchKeypad(
+            com.walkman.tv.ui.components.TvKeypad(
                 onAppend = { ch -> query += ch },
                 onBackspace = { if (query.isNotEmpty()) query = query.dropLast(1) },
                 onClear = { query = "" },
-                onSearch = { runSearch() },
+                onConfirm = { runSearch() },
+                confirmLabel = "搜索",
             )
         }
 
@@ -211,77 +210,6 @@ private fun SearchInputBox(query: String) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-    }
-}
-
-@Composable
-private fun SearchKeypad(
-    onAppend: (Char) -> Unit,
-    onBackspace: () -> Unit,
-    onClear: () -> Unit,
-    onSearch: () -> Unit,
-) {
-    // 6 columns. Letters first (5 rows of 6 = 26 with last row holding Y Z), then a separator,
-    // then digits in 2 quieter rows, then a control row.
-    val letterRows = listOf("ABCDEF", "GHIJKL", "MNOPQR", "STUVWX", "YZ")
-    val digitRows = listOf("012345", "6789")
-    val firstKey = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { firstKey.requestFocus() } }
-
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        letterRows.forEachIndexed { rowIdx, row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                row.forEachIndexed { colIdx, c ->
-                    KeyButton(
-                        label = c.toString(),
-                        focusRequester = if (rowIdx == 0 && colIdx == 0) firstKey else null,
-                        onClick = { onAppend(c) },
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.size(6.dp))
-        digitRows.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                row.forEach { c -> KeyButton(c.toString()) { onAppend(c) } }
-            }
-        }
-        Spacer(Modifier.size(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            KeyButton("删除", wide = true) { onBackspace() }
-            KeyButton("清空", wide = true) { onClear() }
-            KeyButton("搜索", wide = true, primary = true) { onSearch() }
-        }
-    }
-}
-
-@Composable
-private fun KeyButton(
-    label: String,
-    wide: Boolean = false,
-    primary: Boolean = false,
-    focusRequester: FocusRequester? = null,
-    onClick: () -> Unit,
-) {
-    // Letter/digit key = 44 wide, wide key = 92 (matches 2 letter slots + a gap).
-    // Letter row total: 6*44 + 5*4 = 284dp. Control row: 3*92 + 2*6 = 288dp ≈ 284dp.
-    TvPill(
-        onClick = onClick,
-        selected = primary,
-        focusRequester = focusRequester,
-        contentPadding = PaddingValues(0.dp),
-    ) {
-        Box(
-            modifier = Modifier.size(width = if (wide) 92.dp else 44.dp, height = 38.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                label,
-                fontSize = if (label.length == 1) 15.sp else 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-            )
-        }
     }
 }
 

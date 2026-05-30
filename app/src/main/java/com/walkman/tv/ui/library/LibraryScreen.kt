@@ -74,6 +74,7 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
 
     var tab by remember { mutableStateOf(TAB_FAVORITES) }
     var detailId by remember { mutableStateOf<String?>(null) }
+    var showCreate by remember { mutableStateOf(false) }
 
     // Per-tab FocusRequester so D-pad Up from the lower area lands on the *active* tab,
     // not some other geometric candidate. Reused across recompositions.
@@ -124,7 +125,7 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
                     PlaylistGrid(
                         playlists = listOf(love) + userLists,
                         onPick = { detailId = it.id },
-                        onCreate = { scope.launch { appContainer.libraryStore.createList(nextNewName(userLists)) } },
+                        onCreate = { showCreate = true },
                         upFocus = activeTabFocus,
                     )
                 } else {
@@ -144,21 +145,22 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
             }
         }
     }
+
+    if (showCreate) {
+        com.walkman.tv.ui.components.PlaylistNameDialog(
+            initial = "",
+            title = "新建歌单",
+            onDismiss = { showCreate = false },
+            onConfirm = { name ->
+                scope.launch { appContainer.libraryStore.createList(name) }
+                showCreate = false
+            },
+        )
+    }
 }
 
 private const val TAB_FAVORITES = "fav"
 private const val TAB_HISTORY = "history"
-
-/** Auto-name new playlists "新建歌单 N" so we don't need text input on the remote. The user can
- *  delete unused ones from the detail view. */
-private fun nextNewName(existing: List<Playlist>): String {
-    val taken = existing.mapNotNull { p ->
-        Regex("^新建歌单 (\\d+)$").matchEntire(p.name)?.groupValues?.get(1)?.toIntOrNull()
-    }.toSet()
-    var n = 1
-    while (n in taken) n++
-    return "新建歌单 $n"
-}
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -276,7 +278,7 @@ private fun CreatePlaylistCard(onClick: () -> Unit) {
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text("自动命名", color = AppColors.TextMuted, fontSize = 11.sp)
+            Text("自定义名称", color = AppColors.TextMuted, fontSize = 11.sp)
         }
     }
 }

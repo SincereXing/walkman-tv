@@ -58,9 +58,10 @@ fun TrackRow(
     index: Int,
     modifier: Modifier = Modifier,
     nowPlaying: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    TvFocusable(onClick = onClick, modifier = modifier.fillMaxWidth()) {
+    TvFocusable(onClick = onClick, onLongClick = onLongClick, modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -225,6 +226,10 @@ fun TrackList(
         }
     }
 
+    // Long-press OK on any row opens the "add to playlist" picker. Owned here so every
+    // TrackList consumer (search / library / songlist / leaderboard / recommend) gets it for free.
+    var pickerTrack by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Track?>(null) }
+
     LazyColumn(
         state = listState,
         // focusRestorer() remembers which row was last focused; when the player overlay closes
@@ -249,11 +254,16 @@ fun TrackList(
                 index = index,
                 modifier = rowModifier,
                 nowPlaying = track.id == nowPlayingId,
+                onLongClick = { pickerTrack = track },
                 onClick = {
                     lastClickedIndex = index
                     onPlay(index)
                 },
             )
         }
+    }
+
+    pickerTrack?.let { t ->
+        com.walkman.tv.ui.components.PlaylistPickerDialog(track = t, onDismiss = { pickerTrack = null })
     }
 }

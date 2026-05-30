@@ -110,6 +110,7 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     val track = state.currentTrack
 
     var showEqDialog by remember { mutableStateOf(false) }
+    var showPicker by remember { mutableStateOf(false) }
 
     // Single combined focus restoration: when no modal is open AND we're not in MV mode,
     // focus the central play button. Re-fires on transitions back to the 'audio + no modal'
@@ -118,7 +119,7 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     //
     // Consolidating to ONE LaunchedEffect avoids four parallel tryRequestFocus loops fighting
     // each other in the 250ms after first composition.
-    val wantsFocus = !state.isMv && !showMvQueue && !showEqDialog
+    val wantsFocus = !state.isMv && !showMvQueue && !showEqDialog && !showPicker
     LaunchedEffect(wantsFocus) {
         if (wantsFocus) tryRequestFocus(playFocus)
     }
@@ -242,7 +243,7 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                         }
                     }
                 },
-                onToggleFav = { scope.launch { appContainer.libraryStore.toggleFavorite(track) } },
+                onToggleFav = { showPicker = true },
                 onMv = {
                     // Toast lets the user see the click registered and surfaces both success and
                     // failure: silent no-op was indistinguishable from a broken button.
@@ -274,6 +275,12 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
 
         if (showEqDialog) {
             EqualizerDialog(onDismiss = { showEqDialog = false })
+        }
+        if (showPicker) {
+            com.walkman.tv.ui.components.PlaylistPickerDialog(
+                track = track,
+                onDismiss = { showPicker = false },
+            )
         }
     }
 }

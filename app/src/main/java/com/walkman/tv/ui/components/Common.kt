@@ -30,7 +30,8 @@ import com.walkman.tv.data.model.SourceID
 import com.walkman.tv.ui.theme.AppColors
 import coil.compose.AsyncImage
 
-/** A focusable surface with green border + scale on focus — base for cards and rows. */
+/** A focusable surface with green border + scale on focus — base for cards and rows.
+ *  Pass [onLongClick] to wire long-press OK (tv-material Surface picks it up natively). */
 @Composable
 fun TvFocusable(
     onClick: () -> Unit,
@@ -38,10 +39,12 @@ fun TvFocusable(
     shape: Shape = RoundedCornerShape(12.dp),
     container: Color = AppColors.Card,
     focusedContainer: Color = AppColors.CardElevated,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     Surface(
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = modifier,
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(
