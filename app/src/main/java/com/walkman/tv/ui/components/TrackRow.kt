@@ -1,6 +1,13 @@
 package com.walkman.tv.ui.components
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode as AnimRepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,10 +33,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.PI
+import kotlin.math.sin
 import androidx.tv.material3.Text
 import com.walkman.tv.data.model.Track
 import com.walkman.tv.ui.theme.AppColors
@@ -51,12 +63,16 @@ fun TrackRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(modifier = Modifier.width(28.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    "${index + 1}",
-                    color = if (nowPlaying) AppColors.AccentGreen else AppColors.TextMuted,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                )
+                if (nowPlaying) {
+                    MiniWaveform(modifier = Modifier.size(width = 22.dp, height = 18.dp))
+                } else {
+                    Text(
+                        "${index + 1}",
+                        color = AppColors.TextMuted,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
             Artwork(track.picURL, modifier = Modifier.size(44.dp))
             Spacer(Modifier.width(12.dp))
@@ -85,6 +101,44 @@ fun TrackRow(
             QualityBadge(track.qualities)
             Spacer(Modifier.width(8.dp))
             SourceChip(track.source)
+        }
+    }
+}
+
+/**
+ * Tiny 6-bar animated equaliser used as the "now playing" indicator in list rows.
+ * Each bar runs its own sine phase so they don't move in lockstep.
+ */
+@Composable
+private fun MiniWaveform(modifier: Modifier = Modifier) {
+    val bars = 6
+    val transition = rememberInfiniteTransition(label = "row-eq")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = LinearEasing),
+            repeatMode = AnimRepeatMode.Restart,
+        ),
+        label = "row-eq-phase",
+    )
+    Canvas(modifier = modifier) {
+        val totalW = size.width
+        val barWidth = totalW / bars * 0.55f
+        val gap = (totalW - barWidth * bars) / (bars - 1).coerceAtLeast(1)
+        val centerY = size.height / 2
+        val maxH = size.height * 0.95f
+        val minH = size.height * 0.25f
+        for (i in 0 until bars) {
+            val x = i * (barWidth + gap)
+            val v = ((sin(phase * (1f + (i % 3) * 0.55f) + i * 0.7f) + 1f) / 2f)
+            val h = (minH + (maxH - minH) * v).coerceAtLeast(2.dp.toPx())
+            drawRoundRect(
+                color = AppColors.AccentGreen,
+                topLeft = Offset(x, centerY - h / 2),
+                size = Size(barWidth, h),
+                cornerRadius = CornerRadius(barWidth / 2, barWidth / 2),
+            )
         }
     }
 }
