@@ -51,26 +51,26 @@ fun QrDialog(
     ) {
         Box(
             modifier = Modifier
-                .width(420.dp)
+                .width(380.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(AppColors.BgPanel)
-                .padding(28.dp),
+                .padding(horizontal = 20.dp, vertical = 18.dp),
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(title, color = AppColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(6.dp))
+                Text(title, color = AppColors.TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
                 Text(
                     subtitle,
                     color = AppColors.TextSecondary,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                 )
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(12.dp))
                 if (bitmap != null) {
                     Box(
                         modifier = Modifier
-                            .size(280.dp)
+                            .size(220.dp)
                             .background(androidx.compose.ui.graphics.Color.White)
-                            .padding(8.dp),
+                            .padding(6.dp),
                     ) {
                         Image(
                             bitmap = bitmap.asImageBitmap(),
@@ -80,39 +80,39 @@ fun QrDialog(
                         )
                     }
                 } else {
-                    Box(modifier = Modifier.size(280.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.size(220.dp), contentAlignment = Alignment.Center) {
                         Text("无法生成二维码", color = AppColors.TextMuted)
                     }
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(10.dp))
                 Text(
                     "或在电脑 / 手机浏览器中打开下方地址：",
                     color = AppColors.TextMuted,
                     fontSize = 12.sp,
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(4.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(AppColors.BgDeep)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
                     Text(
                         url,
                         color = AppColors.AccentGreen,
-                        fontSize = 16.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                     )
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
                 TvPill(
                     onClick = onDismiss,
                     selected = true,
                     focusRequester = closeFocus,
-                    contentPadding = PaddingValues(horizontal = 28.dp, vertical = 10.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
                 ) {
-                    Text("关闭", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text("关闭", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

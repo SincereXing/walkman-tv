@@ -53,7 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
@@ -95,8 +95,19 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     var message by remember { mutableStateOf<String?>(null) }
     var showMvQueue by remember { mutableStateOf(false) }
+    val playFocus = remember { FocusRequester() }
 
     val track = state.currentTrack
+
+    // When the player opens (track non-null + not in MV mode), park focus on the central play
+    // button. Without this the screen has no visible focus highlight and D-pad has nowhere to go.
+    LaunchedEffect(track?.id, state.isMv) {
+        if (track != null && !state.isMv) {
+            // Wait a frame so the TransportBar has composed.
+            kotlinx.coroutines.delay(50)
+            runCatching { playFocus.requestFocus() }
+        }
+    }
 
     BackHandler(enabled = true) {
         when {
@@ -225,6 +236,7 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                         }
                     }
                 },
+                playFocusRequester = playFocus,
             )
         }
     }
@@ -237,7 +249,7 @@ private fun VinylDisc(picURL: String?, isPlaying: Boolean) {
     val rotation = remember { Animatable(0f) }
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
-            // 30-second revolution. Keep going from the current angle when un-paused.
+            // 30s revolution; continues from the current angle when un-paused, freezes on pause.
             while (true) {
                 rotation.animateTo(
                     rotation.value + 360f,
@@ -246,43 +258,51 @@ private fun VinylDisc(picURL: String?, isPlaying: Boolean) {
             }
         }
     }
-    Box(modifier = Modifier.size(320.dp), contentAlignment = Alignment.Center) {
-        // Outer green halo.
+    val circle = androidx.compose.foundation.shape.CircleShape
+    Box(modifier = Modifier.size(360.dp), contentAlignment = Alignment.Center) {
+        // 1) Outer green halo (decorative glow).
         Box(
             modifier = Modifier
-                .size(320.dp)
-                .clip(androidx.compose.foundation.shape.CircleShape)
+                .size(360.dp)
+                .clip(circle)
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            AppColors.AccentGreen,
-                            AppColors.AccentGreen.copy(alpha = 0.6f),
-                            AppColors.AccentGreen.copy(alpha = 0.0f),
+                            AppColors.AccentGreen.copy(alpha = 0.55f),
+                            AppColors.AccentGreen.copy(alpha = 0.20f),
+                            AppColors.AccentGreen.copy(alpha = 0.00f),
                         ),
                     ),
                 ),
         )
-        // Album art clipped to circle, rotated.
+        // 2) Vinyl ring (dark green band that surrounds the album art).
         Box(
             modifier = Modifier
-                .size(240.dp)
-                .rotate(rotation.value)
-                .clip(androidx.compose.foundation.shape.CircleShape)
+                .size(300.dp)
+                .clip(circle)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF0F2A18),
+                            Color(0xFF143A22),
+                            AppColors.AccentGreen.copy(alpha = 0.6f),
+                        ),
+                    ),
+                ),
+        )
+        // 3) Album art — rotated via graphicsLayer so the transform happens at the draw phase
+        // (no recomposition of the underlying AsyncImage every frame; massive perf win on TV).
+        Box(
+            modifier = Modifier
+                .size(230.dp)
+                .graphicsLayer { rotationZ = rotation.value }
+                .clip(circle)
                 .background(AppColors.BgDeep),
         ) {
-            Artwork(
-                picURL,
-                modifier = Modifier.fillMaxSize(),
-                shape = androidx.compose.foundation.shape.CircleShape,
-            )
+            Artwork(picURL, modifier = Modifier.fillMaxSize(), shape = circle)
         }
-        // Center spindle hole.
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .clip(androidx.compose.foundation.shape.CircleShape)
-                .background(Color.Black),
-        )
+        // 4) Center spindle hole.
+        Box(modifier = Modifier.size(14.dp).clip(circle).background(Color.Black))
     }
 }
 
@@ -392,6 +412,7 @@ private fun TransportBar(
     onToggleShuffle: () -> Unit,
     onToggleFav: () -> Unit,
     onMv: () -> Unit,
+    playFocusRequester: FocusRequester? = null,
 ) {
     val track = state.currentTrack
     val faved = track?.let { t -> love.tracks.any { it.id == t.id } } ?: false
@@ -420,6 +441,7 @@ private fun TransportBar(
             IconPill(
                 if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 large = true,
+                focusRequester = playFocusRequester,
                 onClick = onTogglePlay,
             )
             IconPill(Icons.Filled.SkipNext, onClick = onNext)
@@ -508,6 +530,7 @@ private fun IconPill(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     active: Boolean = false,
     large: Boolean = false,
+    focusRequester: FocusRequester? = null,
     onClick: () -> Unit,
 ) {
     TvPill(
@@ -515,6 +538,7 @@ private fun IconPill(
         shape = androidx.compose.foundation.shape.CircleShape,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(if (large) 14.dp else 10.dp),
         selected = active,
+        focusRequester = focusRequester,
     ) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(if (large) 30.dp else 22.dp))
     }
