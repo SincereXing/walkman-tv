@@ -14,8 +14,12 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        val player = App.container.playbackController.player
-        session = MediaSession.Builder(this, player).build()
+        runCatching {
+            val player = App.container.playbackController.player
+            session = MediaSession.Builder(this, player).build()
+        }.onFailure {
+            android.util.Log.e("PlaybackService", "MediaSession init failed", it)
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session

@@ -61,6 +61,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -284,43 +286,73 @@ private fun VinylDisc(picURL: String?, isPlaying: Boolean) {
     }
 }
 
-// ============== Waveform =======================================================================
+// ============== Waveform (ported from iOS AudioWave) ==========================================
 
+/** One sine-wave layer: independent amplitude / wavelength / drift / pulse / opacity. */
+private data class WaveLayer(
+    val amp: Float, val wl: Float, val drift: Float,
+    val pulse: Float, val pPhase: Float,
+    val opacity: Float, val widthDp: Float,
+)
+
+private val waveLayers = listOf(
+    WaveLayer(1.00f, 235f, 0.70f, 2.6f, 0.0f, 0.45f, 1.3f),
+    WaveLayer(0.74f, 165f, 1.10f, 3.4f, 1.1f, 0.85f, 1.1f),
+    WaveLayer(0.52f, 125f, 1.65f, 4.3f, 2.4f, 0.32f, 0.9f),
+)
+
+/**
+ * Three overlapping horizontal sine wave lines that drift and pulse — ported from iOS AudioWave.
+ * Each line is stroked with a gradient (transparent at edges, opaque in the middle) so the bands
+ * converge at the sides. Drifts while playing, freezes at t=0 when paused.
+ */
 @Composable
 private fun Waveform(isPlaying: Boolean, modifier: Modifier = Modifier) {
-    val bars = 36
     val transition = rememberInfiniteTransition(label = "wave")
-    val phase by transition.animateFloat(
+    val time by transition.animateFloat(
         initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
+        targetValue = 1000f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1800, easing = LinearEasing),
+            animation = tween(durationMillis = 1_000_000, easing = LinearEasing),
             repeatMode = AnimRepeatMode.Restart,
         ),
-        label = "wave-phase",
+        label = "wave-time",
     )
     Canvas(modifier = modifier) {
-        val totalW = size.width
-        val barWidth = totalW / bars * 0.55f
-        val gap = (totalW - barWidth * bars) / (bars - 1)
-        val centerY = size.height / 2
-        val maxH = size.height * 0.95f
-        val minH = size.height * 0.15f
-        for (i in 0 until bars) {
-            val x = i * (barWidth + gap)
-            val v = if (isPlaying) {
-                val freq = 1.0f + (i % 5) * 0.45f
-                val amp = 0.45f + 0.45f * (i.toFloat() / bars)
-                ((sin(phase * freq + i * 0.6f) + 1f) / 2f * amp).coerceIn(0f, 1f)
-            } else {
-                0.08f
+        val t = if (isPlaying) time.toDouble() else 0.0
+        val midY = size.height / 2.0
+        val width = size.width.toDouble()
+        for (w in waveLayers) {
+            // Amplitude "beats": two summed sines with a wide swing -> snappy, music-like rise/fall.
+            val beat = 0.5 +
+                0.38 * sin(t * w.pulse + w.pPhase) +
+                0.22 * sin(t * w.pulse * 1.9 + w.pPhase * 1.7)
+            val pulse = maxOf(0.08, beat)
+            val amp = minOf(w.amp * pulse, 0.92) * size.height / 2.0
+            val phase = t * w.drift * 2.2
+
+            val path = Path()
+            fun yAt(xx: Double): Float {
+                // 0 at both ends, 1 in the middle — all lines converge at the edges.
+                val env = sin(xx / width * PI)
+                return (midY + sin(xx / w.wl * 2 * PI + phase) * amp * env).toFloat()
             }
-            val h = (minH + (maxH - minH) * v).coerceAtLeast(2.dp.toPx())
-            drawRoundRect(
-                color = AppColors.AccentGreen.copy(alpha = 0.85f),
-                topLeft = Offset(x, centerY - h / 2),
-                size = Size(barWidth, h),
-                cornerRadius = CornerRadius(barWidth / 2, barWidth / 2),
+            path.moveTo(0f, yAt(0.0))
+            var x = 0.0
+            while (x <= width) {
+                path.lineTo(x.toFloat(), yAt(x))
+                x += 2.0
+            }
+            drawPath(
+                path = path,
+                brush = Brush.horizontalGradient(
+                    colorStops = arrayOf(
+                        0f to AppColors.AccentGreen.copy(alpha = 0f),
+                        0.5f to AppColors.AccentGreen.copy(alpha = w.opacity),
+                        1f to AppColors.AccentGreen.copy(alpha = 0f),
+                    ),
+                ),
+                style = Stroke(width = w.widthDp.dp.toPx()),
             )
         }
     }

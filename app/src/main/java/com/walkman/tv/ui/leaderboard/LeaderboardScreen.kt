@@ -61,13 +61,19 @@ fun LeaderboardScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
 
     Row(modifier = modifier.fillMaxSize().padding(top = 8.dp)) {
         Column(modifier = Modifier.width(150.dp).fillMaxHeight()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                boardSources.forEach { s ->
-                    TvPill(
-                        onClick = { source = s },
-                        selected = source == s,
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                    ) { Text(s.displayName, fontSize = 11.sp) }
+            // Wrap to 2x2 — 4 platform chips can't fit horizontally in a 150dp column
+            // (QQ音乐 alone is ~52dp; the row total ~175dp would clip the last chip).
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                boardSources.chunked(2).forEach { rowChips ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        rowChips.forEach { s ->
+                            TvPill(
+                                onClick = { source = s },
+                                selected = source == s,
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            ) { Text(s.displayName, fontSize = 11.sp) }
+                        }
+                    }
                 }
             }
             Spacer(Modifier.padding(top = 6.dp))

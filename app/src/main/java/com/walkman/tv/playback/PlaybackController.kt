@@ -12,6 +12,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.walkman.tv.data.model.Quality
 import com.walkman.tv.data.model.Track
+import com.walkman.tv.source.ResolvedTrack
 import com.walkman.tv.source.SourceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -120,7 +121,19 @@ class PlaybackController(
         resolveJob?.cancel()
         resolveJob = scope.launch {
             val resolved = runCatching { sources.resolveMusicURL(track, preferredQuality) }
-            resolved.onSuccess { r ->
+            runCatching { playResolvedOrFail(track, resolved) }
+                .onFailure { e ->
+                    android.util.Log.e("PlaybackController", "playAt crashed", e)
+                    _state.value = _state.value.copy(
+                        resolving = false,
+                        error = "播放出错: ${e.message ?: e::class.simpleName}",
+                    )
+                }
+        }
+    }
+
+    private fun playResolvedOrFail(track: Track, resolved: Result<ResolvedTrack>) {
+        resolved.onSuccess { r ->
                 val item = MediaItem.Builder()
                     .setUri(r.url)
                     .setMediaMetadata(
@@ -134,7 +147,11 @@ class PlaybackController(
                     .build()
                 player.setMediaItem(item)
                 player.prepare()
-                ensureService()
+                // NOTE: MediaSessionService startup is currently disabled — Android 12+ kills
+                // the process via ForegroundServiceDidNotStartInTimeException if the service
+                // doesn't post a media notification within 5s, which races with our URL-resolve
+                // path. Re-enable once a proper MediaNotification.Provider is in place.
+                // ensureService()
                 player.playWhenReady = true
                 _state.value = _state.value.copy(
                     resolving = false,
