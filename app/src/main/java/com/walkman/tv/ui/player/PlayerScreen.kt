@@ -100,18 +100,30 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
 
     val track = state.currentTrack
 
-    // Park focus on the central play button:
-    //   - when the player first opens (track first becomes non-null);
-    //   - when MV exits back to audio;
-    //   - when the queue drawer closes (otherwise focus is left on the now-vanished drawer item
-    //     and the screen looks dead to the remote).
-    LaunchedEffect(track?.id, state.isMv, showMvQueue) {
-        if (track != null && !state.isMv && !showMvQueue) {
-            // Wait a frame so the TransportBar has composed / the drawer has finished slide-out.
+    // Park focus on the central play button — but ONLY at moments where the previously focused
+    // element is gone:
+    //   * first composition (no focus yet);
+    //   * MV exits back to audio (the AndroidView PlayerView swallowed focus);
+    //   * the queue drawer closes (the focused drawer item just disappeared).
+    // We deliberately do NOT key on track.id — that would yank focus back to play on every
+    // track change, which is what made the player feel 'dead' after one operation.
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(80)
+        runCatching { playFocus.requestFocus() }
+    }
+    LaunchedEffect(state.isMv) {
+        if (!state.isMv) {
             kotlinx.coroutines.delay(80)
             runCatching { playFocus.requestFocus() }
         }
     }
+    LaunchedEffect(showMvQueue) {
+        if (!showMvQueue) {
+            kotlinx.coroutines.delay(80)
+            runCatching { playFocus.requestFocus() }
+        }
+    }
+    var showEqDialog by remember { mutableStateOf(false) }
 
     BackHandler(enabled = true) {
         when {
@@ -236,9 +248,7 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                     }
                 },
                 onShowQueue = { showMvQueue = true },
-                onTuneClick = {
-                    android.widget.Toast.makeText(context, "高级设置即将上线", android.widget.Toast.LENGTH_SHORT).show()
-                },
+                onTuneClick = { showEqDialog = true },
                 playFocusRequester = playFocus,
             )
         }
@@ -253,6 +263,85 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             },
             modifier = Modifier.align(Alignment.CenterEnd),
         )
+
+        if (showEqDialog) {
+            EqualizerDialog(onDismiss = { showEqDialog = false })
+        }
+    }
+}
+
+@Composable
+private fun EqualizerDialog(onDismiss: () -> Unit) {
+    val eq = appContainer.equalizerManager
+    val presets = remember { eq.presets }
+    var selected by remember { mutableStateOf(eq.currentPresetIndex) }
+    val closeFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { closeFocus.requestFocus() } }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            modifier = Modifier
+                .width(360.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(AppColors.BgPanel)
+                .padding(horizontal = 22.dp, vertical = 20.dp),
+        ) {
+            Text("均衡器", color = AppColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if (presets.isEmpty()) "本机不支持系统均衡器" else "选择一个预设，立即生效",
+                color = AppColors.TextSecondary,
+                fontSize = 12.sp,
+            )
+            Spacer(Modifier.height(14.dp))
+            if (presets.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    presets.forEachIndexed { idx, label ->
+                        val active = idx == selected
+                        TvFocusable(
+                            onClick = {
+                                selected = idx
+                                eq.applyPreset(idx)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    label,
+                                    color = if (active) AppColors.AccentGreen else AppColors.TextPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (active) {
+                                    Text("✓", color = AppColors.AccentGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TvPill(
+                    onClick = onDismiss,
+                    selected = true,
+                    focusRequester = closeFocus,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                ) {
+                    Text("完成", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
     }
 }
 

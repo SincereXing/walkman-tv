@@ -356,4 +356,7 @@ class PlaybackController(
         resolveJob?.cancel()
         player.release()
     }
+
+    /** Current ExoPlayer audio session id — what an `Equalizer` etc must bind to. */
+    val audioSessionId: Int get() = player.audioSessionId
 }

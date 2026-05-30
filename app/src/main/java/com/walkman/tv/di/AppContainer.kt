@@ -5,6 +5,7 @@ import com.walkman.tv.data.store.LibraryStore
 import com.walkman.tv.data.store.PlaybackSnapshotStore
 import com.walkman.tv.data.store.ScriptStore
 import com.walkman.tv.data.store.SettingsStore
+import com.walkman.tv.playback.EqualizerManager
 import com.walkman.tv.playback.LyricsFetcher
 import com.walkman.tv.playback.PlaybackController
 import kotlinx.coroutines.CoroutineScope
@@ -76,6 +77,10 @@ class AppContainer(val appContext: Context) {
     /** Created eagerly on the main thread in [App] (ExoPlayer needs a consistent looper). */
     lateinit var playbackController: PlaybackController
         private set
+
+    val equalizerManager: EqualizerManager by lazy {
+        EqualizerManager { playbackController.audioSessionId }
+    }
 
     val scriptStore: ScriptStore by lazy { ScriptStore(appContext, sourceManager) }
     val libraryStore: LibraryStore by lazy { LibraryStore(appContext) }
