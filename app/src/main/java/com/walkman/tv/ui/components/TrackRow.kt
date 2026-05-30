@@ -111,9 +111,11 @@ fun TrackRow(
 /**
  * Tiny 6-bar animated equaliser used as the "now playing" indicator in list rows.
  * Each bar runs its own sine phase so they don't move in lockstep.
+ *
+ * Public so other surfaces (e.g. the player queue drawer) can reuse the same indicator.
  */
 @Composable
-private fun MiniWaveform(modifier: Modifier = Modifier) {
+internal fun MiniWaveform(modifier: Modifier = Modifier) {
     val bars = 6
     val transition = rememberInfiniteTransition(label = "row-eq")
     val phase by transition.animateFloat(

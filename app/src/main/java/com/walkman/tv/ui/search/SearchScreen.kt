@@ -72,6 +72,9 @@ fun SearchScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
             searched = true
             val f = filter
             val q = query
+            // Record into history before kicking off the request so it shows up on the next
+            // empty-query render even if the result list ends up empty.
+            appContainer.searchHistoryStore.record(q)
             val pair = runCatching {
                 coroutineScope {
                     val tracksJob = async {
@@ -138,6 +141,10 @@ fun SearchScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
                 songlists = songlists,
                 tracks = tracks,
                 onOpenPlayer = onOpenPlayer,
+                onPickHistory = { kw ->
+                    query = kw
+                    runSearch()
+                },
                 onPickSonglist = { info ->
                     scope.launch {
                         val svc = appContainer.songlists.serviceFor(info.source) ?: return@launch
@@ -312,10 +319,18 @@ private fun ResultsPane(
     tracks: List<Track>,
     onOpenPlayer: () -> Unit,
     onPickSonglist: (SonglistInfo) -> Unit,
+    onPickHistory: (String) -> Unit = {},
 ) {
+    val history by appContainer.searchHistoryStore.items.collectAsState()
     when {
         loading -> LoadingState(Modifier.fillMaxSize())
-        !searched -> EmptyHint("输入关键词开始搜索", Modifier.fillMaxSize())
+        !searched -> {
+            if (history.isEmpty()) {
+                EmptyHint("输入关键词开始搜索", Modifier.fillMaxSize())
+            } else {
+                SearchHistoryPane(history = history, onPick = onPickHistory)
+            }
+        }
         songlists.isEmpty() && tracks.isEmpty() ->
             EmptyHint("没有找到结果", Modifier.fillMaxSize())
         else -> Column(modifier = Modifier.fillMaxSize()) {
@@ -361,4 +376,44 @@ private fun SectionHeader(text: String) {
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(vertical = 4.dp),
     )
+}
+
+/** Recent-search chips. Rendered when the user hasn't searched yet but the store has entries.
+ *  Wraps onto multiple lines via FlowRow so we don't horizontally clip long histories. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun SearchHistoryPane(history: List<String>, onPick: (String) -> Unit) {
+    val scope = rememberCoroutineScope()
+    Column(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "最近搜索",
+                color = AppColors.AccentGreen,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.weight(1f))
+            TvPill(
+                onClick = { scope.launch { appContainer.searchHistoryStore.clear() } },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text("清空", fontSize = 12.sp)
+            }
+        }
+        Spacer(Modifier.padding(top = 8.dp))
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            history.forEach { kw ->
+                TvPill(
+                    onClick = { onPick(kw) },
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text(kw, fontSize = 13.sp)
+                }
+            }
+        }
+    }
 }

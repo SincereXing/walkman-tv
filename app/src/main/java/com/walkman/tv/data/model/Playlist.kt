@@ -17,7 +17,7 @@ data class Playlist(
     companion object {
         const val LOVE = "love"
         const val HISTORY = "history"
-        const val LOVE_NAME = "我的收藏"
+        const val LOVE_NAME = "我喜欢的"
         const val HISTORY_NAME = "播放历史"
     }
 }

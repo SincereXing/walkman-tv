@@ -4,6 +4,7 @@ import android.content.Context
 import com.walkman.tv.data.store.LibraryStore
 import com.walkman.tv.data.store.PlaybackSnapshotStore
 import com.walkman.tv.data.store.ScriptStore
+import com.walkman.tv.data.store.SearchHistoryStore
 import com.walkman.tv.data.store.SettingsStore
 import com.walkman.tv.playback.EqualizerManager
 import com.walkman.tv.playback.LyricsFetcher
@@ -86,6 +87,7 @@ class AppContainer(val appContext: Context) {
     val libraryStore: LibraryStore by lazy { LibraryStore(appContext) }
     val settingsStore: SettingsStore by lazy { SettingsStore(appContext) }
     val playbackSnapshotStore: PlaybackSnapshotStore by lazy { PlaybackSnapshotStore(appContext) }
+    val searchHistoryStore: SearchHistoryStore by lazy { SearchHistoryStore(appContext) }
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -122,6 +124,7 @@ class AppContainer(val appContext: Context) {
                 sourceManager.fallbackEnabled = s.fallbackEnabled
             }.launchIn(appScope)
             scriptStore.loadAll()
+            searchHistoryStore.load()
 
             // Restore last session's queue + index + playing state. Run after scripts load so
             // any custom-source needed to resolve URLs is ready.

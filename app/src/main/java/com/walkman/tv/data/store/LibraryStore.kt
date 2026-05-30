@@ -40,8 +40,10 @@ class LibraryStore(context: Context) {
 
     suspend fun loadAll() {
         val data = withContext(Dispatchers.IO) { store.load() }
-        _love.value = data.love
-        _history.value = data.history
+        // Force the built-in names to whatever the current model declares (so renames in the
+        // model — e.g. "我的收藏" → "我喜欢的" — apply on next launch without a migration step).
+        _love.value = data.love.copy(name = Playlist.LOVE_NAME)
+        _history.value = data.history.copy(name = Playlist.HISTORY_NAME)
         _userLists.value = data.userLists
     }
 

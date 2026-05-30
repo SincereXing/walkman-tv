@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
@@ -77,6 +78,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.sin
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -220,13 +222,25 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 onPrev = { controller.prev() },
                 onNext = { controller.next() },
                 onCycleRepeat = {
-                    controller.setRepeatMode(
-                        when (state.repeatMode) {
-                            RepeatMode.OFF -> RepeatMode.ALL
-                            RepeatMode.ALL -> RepeatMode.ONE
-                            RepeatMode.ONE -> RepeatMode.OFF
-                        },
-                    )
+                    // 3-state cycle:
+                    //   顺序循环 (ALL,  shuffle=off)  → 单曲循环 (ONE, shuffle=off)
+                    //   单曲循环 (ONE,  shuffle=off)  → 随机循环 (ALL, shuffle=on)
+                    //   随机循环 (ALL,  shuffle=on)   → 顺序循环 (ALL, shuffle=off)
+                    val mode = state.repeatMode
+                    val shuffle = state.shuffle
+                    when {
+                        mode == RepeatMode.ALL && !shuffle -> {
+                            controller.setRepeatMode(RepeatMode.ONE)
+                        }
+                        mode == RepeatMode.ONE && !shuffle -> {
+                            controller.setRepeatMode(RepeatMode.ALL)
+                            if (!state.shuffle) controller.toggleShuffle()
+                        }
+                        else -> {
+                            controller.setRepeatMode(RepeatMode.ALL)
+                            if (state.shuffle) controller.toggleShuffle()
+                        }
+                    }
                 },
                 onToggleFav = { scope.launch { appContainer.libraryStore.toggleFavorite(track) } },
                 onMv = {
@@ -326,19 +340,6 @@ private fun EqualizerDialog(onDismiss: () -> Unit) {
                             }
                         }
                     }
-                }
-            }
-            Spacer(Modifier.height(14.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TvPill(
-                    onClick = onDismiss,
-                    selected = true,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-                ) {
-                    Text("完成", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -467,24 +468,57 @@ private fun VinylGrooves(modifier: Modifier) {
 
 // ============== Waveform (ported from iOS AudioWave) ==========================================
 
-/** One sine-wave layer: independent amplitude / wavelength / drift / pulse / opacity. */
+/**
+ * One wave layer = a sum of 3 sinusoids with incommensurate (non-integer-ratio) frequencies.
+ * Summing three primes-ish ratios gives a quasi-random, non-repeating shape — none of the
+ * smooth-periodic "wriggling worm" look you get from a single sine.
+ *
+ * - amp:      peak amplitude as a fraction of half-height
+ * - k1/k2/k3: angular spatial frequency for each component (radians per px)
+ * - d1/d2/d3: time drift speed for each component (radians per time-unit)
+ * - w1/w2/w3: per-component amplitude weights (summed → renormalised by 1/(w1+w2+w3))
+ * - pulse:    breathing speed for amplitude beat
+ * - pPhase:   offset so the two layers' beats don't peak simultaneously
+ * - opacity:  stroke alpha at the centre of the gradient
+ * - widthDp:  stroke width
+ * - envBias:  centre of the amplitude envelope (0..1, 0.5 = dead-centre)
+ */
 private data class WaveLayer(
-    val amp: Float, val wl: Float, val drift: Float,
+    val amp: Float,
+    val k1: Float, val k2: Float, val k3: Float,
+    val d1: Float, val d2: Float, val d3: Float,
+    val w1: Float, val w2: Float, val w3: Float,
     val pulse: Float, val pPhase: Float,
     val opacity: Float, val widthDp: Float,
+    val envBias: Float,
 )
 
 private val waveLayers = listOf(
-    // Front line: brighter / thicker.
-    WaveLayer(0.85f, 185f, 0.90f, 2.8f, 0.0f, 0.85f, 1.4f),
-    // Back line: softer / shorter wavelength for a subtle counter-rhythm.
-    WaveLayer(0.55f, 130f, 1.45f, 3.8f, 1.6f, 0.45f, 1.1f),
+    // Front line: brighter / thicker, biased slightly left of centre.
+    WaveLayer(
+        amp = 0.85f,
+        k1 = 0.034f, k2 = 0.061f, k3 = 0.083f,
+        d1 = 1.30f, d2 = -0.85f, d3 = 0.55f,
+        w1 = 0.50f, w2 = 0.32f, w3 = 0.18f,
+        pulse = 2.8f, pPhase = 0.0f,
+        opacity = 0.90f, widthDp = 1.6f, envBias = 0.46f,
+    ),
+    // Back line: softer / faster phase drift, biased slightly right of centre.
+    WaveLayer(
+        amp = 0.62f,
+        k1 = 0.041f, k2 = 0.073f, k3 = 0.107f,
+        d1 = -1.05f, d2 = 1.45f, d3 = -0.72f,
+        w1 = 0.45f, w2 = 0.35f, w3 = 0.20f,
+        pulse = 3.6f, pPhase = 1.6f,
+        opacity = 0.55f, widthDp = 1.2f, envBias = 0.54f,
+    ),
 )
 
 /**
- * Three overlapping horizontal sine wave lines that drift and pulse — ported from iOS AudioWave.
- * Each line is stroked with a gradient (transparent at edges, opaque in the middle) so the bands
- * converge at the sides. Drifts while playing, freezes at t=0 when paused.
+ * Two overlapping horizontal "audio" lines — same look as iOS AudioWave but each line is now a
+ * sum of 3 sinusoids with non-integer-ratio frequencies so the curve is irregular (no obvious
+ * repeating period). A Hann-like envelope centred slightly off-mid pulls both ends to 0 so the
+ * lines converge at the edges. Drifts while playing, freezes at t=0 when paused.
  */
 @Composable
 private fun Waveform(isPlaying: Boolean, modifier: Modifier = Modifier) {
@@ -503,19 +537,29 @@ private fun Waveform(isPlaying: Boolean, modifier: Modifier = Modifier) {
         val midY = size.height / 2.0
         val width = size.width.toDouble()
         for (w in waveLayers) {
-            // Amplitude "beats": two summed sines with a wide swing -> snappy, music-like rise/fall.
+            // Amplitude breath — 2 incommensurate sines summed for a "music-like" rise/fall.
             val beat = 0.5 +
                 0.38 * sin(t * w.pulse + w.pPhase) +
                 0.22 * sin(t * w.pulse * 1.9 + w.pPhase * 1.7)
-            val pulse = maxOf(0.08, beat)
-            val amp = minOf(w.amp * pulse, 0.92) * size.height / 2.0
-            val phase = t * w.drift * 2.2
+            val pulse = maxOf(0.10, beat)
+            val ampPx = minOf(w.amp * pulse, 0.92) * size.height / 2.0
+            val wSum = (w.w1 + w.w2 + w.w3).toDouble()
+            val ph1 = t * w.d1
+            val ph2 = t * w.d2 + 1.3
+            val ph3 = t * w.d3 + 2.7
 
             val path = Path()
             fun yAt(xx: Double): Float {
-                // 0 at both ends, 1 in the middle — all lines converge at the edges.
-                val env = sin(xx / width * PI)
-                return (midY + sin(xx / w.wl * 2 * PI + phase) * amp * env).toFloat()
+                // Hann-like envelope centred at envBias — peaks in the middle, smoothly 0 at edges.
+                val u = (xx / width - w.envBias) / 0.5 // -1..1 across the canvas (when envBias=0.5)
+                val envRaw = 0.5 + 0.5 * cos(u.coerceIn(-1.0, 1.0) * PI) // 1 at centre, 0 at ±1
+                val env = envRaw * envRaw // sharpen the falloff so edges fade harder
+                val sample = (
+                    w.w1 * sin(xx * w.k1 + ph1) +
+                    w.w2 * sin(xx * w.k2 + ph2) +
+                    w.w3 * sin(xx * w.k3 + ph3)
+                ) / wSum
+                return (midY + sample * ampPx * env).toFloat()
             }
             path.moveTo(0f, yAt(0.0))
             var x = 0.0
@@ -584,8 +628,16 @@ private fun TransportBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            val repeatIcon = if (state.repeatMode == RepeatMode.ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat
-            IconPill(repeatIcon, active = state.repeatMode != RepeatMode.OFF, onClick = onCycleRepeat)
+            // Icon reflects the *combined* (repeatMode, shuffle) state:
+            //   shuffle=on            -> Shuffle (随机循环)
+            //   shuffle=off, ONE      -> RepeatOne (单曲循环)
+            //   shuffle=off, ALL/OFF  -> Repeat (顺序循环)
+            val repeatIcon = when {
+                state.shuffle -> Icons.Filled.Shuffle
+                state.repeatMode == RepeatMode.ONE -> Icons.Filled.RepeatOne
+                else -> Icons.Filled.Repeat
+            }
+            IconPill(repeatIcon, active = true, onClick = onCycleRepeat)
             IconPill(Icons.Filled.SkipPrevious, onClick = onPrev)
             IconPill(
                 if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -834,13 +886,23 @@ private fun QueueRow(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                "${index + 1}",
-                color = if (isCurrent) AppColors.AccentGreen else AppColors.TextMuted,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
+            androidx.compose.foundation.layout.Box(
                 modifier = Modifier.width(22.dp),
-            )
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isCurrent) {
+                    com.walkman.tv.ui.components.MiniWaveform(
+                        modifier = Modifier.size(width = 18.dp, height = 14.dp),
+                    )
+                } else {
+                    Text(
+                        "${index + 1}",
+                        color = AppColors.TextMuted,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
             Spacer(Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(

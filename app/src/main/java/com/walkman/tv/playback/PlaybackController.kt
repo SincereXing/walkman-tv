@@ -179,12 +179,16 @@ class PlaybackController(
             queue = s.queue,
             currentIndex = s.index,
             wasPlaying = s.isPlaying,
+            repeatModeOrdinal = s.repeatMode.ordinal,
+            shuffle = s.shuffle,
         )
     }
 
     /** Restore queue + index from a snapshot. Resumes playback if the previous session was
      *  playing; URLs are resolved fresh (they expire). Called once from AppContainer.bootstrap. */
     fun restoreSnapshot(s: PlaybackSnapshot) {
+        val mode = RepeatMode.values().getOrNull(s.repeatModeOrdinal) ?: RepeatMode.ALL
+        _state.value = _state.value.copy(repeatMode = mode, shuffle = s.shuffle)
         if (s.queue.isEmpty() || s.currentIndex !in s.queue.indices) return
         // Stage the queue without auto-play first, so the UI shows the track immediately.
         _state.value = _state.value.copy(queue = s.queue, index = s.currentIndex, isPlaying = false)

@@ -1,15 +1,32 @@
 package com.walkman.tv.ui.library
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,51 +34,351 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import com.walkman.tv.data.model.Playlist
 import com.walkman.tv.ui.appContainer
+import com.walkman.tv.ui.components.Artwork
 import com.walkman.tv.ui.components.EmptyHint
 import com.walkman.tv.ui.components.TrackList
+import com.walkman.tv.ui.components.TvFocusable
 import com.walkman.tv.ui.components.TvPill
 import com.walkman.tv.ui.playList
+import com.walkman.tv.ui.theme.AppColors
 import kotlinx.coroutines.launch
 
+/**
+ * 「我的列表」screen. Two top tabs:
+ *  - 我的收藏: a grid of playlists ("我喜欢的" + user-created) + a 新建歌单 card.
+ *    Tap a playlist to slide into its detail (track list + 播放全部 / 删除歌单 controls).
+ *  - 播放历史: flat track list of the most-recently-played songs.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun LibraryScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val love by appContainer.libraryStore.love.collectAsState()
     val history by appContainer.libraryStore.history.collectAsState()
     val userLists by appContainer.libraryStore.userLists.collectAsState()
-    var selectedId by remember { mutableStateOf(Playlist.LOVE) }
 
-    val allLists = listOf(love, history) + userLists
-    val current = allLists.firstOrNull { it.id == selectedId } ?: love
+    var tab by remember { mutableStateOf(TAB_FAVORITES) }
+    var detailId by remember { mutableStateOf<String?>(null) }
+
+    // Per-tab FocusRequester so D-pad Up from the lower area lands on the *active* tab,
+    // not some other geometric candidate. Reused across recompositions.
+    val tabFocus = remember { mapOf(TAB_FAVORITES to FocusRequester(), TAB_HISTORY to FocusRequester()) }
+    val activeTabFocus = tabFocus[tab]!!
+
+    // Back closes the playlist detail; otherwise falls through to the parent (which jumps to
+    // Recommend / shows the exit dialog).
+    BackHandler(enabled = detailId != null) { detailId = null }
 
     Column(modifier = modifier.fillMaxSize().padding(top = 8.dp)) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(allLists, key = { it.id }) { list ->
-                TvPill(onClick = { selectedId = list.id }, selected = selectedId == list.id) {
-                    Text("${list.name} (${list.tracks.size})", fontSize = 13.sp)
-                }
+        // Tab row — 4dp outer padding gives the 1.06x focus-scale + 2dp border somewhere
+        // to grow without clipping at the screen edge.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TvPill(
+                onClick = { tab = TAB_FAVORITES; detailId = null },
+                selected = tab == TAB_FAVORITES,
+                focusRequester = tabFocus[TAB_FAVORITES],
+            ) {
+                Text("我的收藏 (${1 + userLists.size})", fontSize = 13.sp)
+            }
+            TvPill(
+                onClick = { tab = TAB_HISTORY; detailId = null },
+                selected = tab == TAB_HISTORY,
+                focusRequester = tabFocus[TAB_HISTORY],
+            ) {
+                Text("播放历史 (${history.tracks.size})", fontSize = 13.sp)
             }
         }
         Spacer(Modifier.padding(top = 6.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(current.name, fontSize = 18.sp, color = com.walkman.tv.ui.theme.AppColors.TextPrimary)
-            Spacer(Modifier.weight(1f))
-            if (current.id == Playlist.HISTORY && current.tracks.isNotEmpty()) {
-                TvPill(onClick = { scope.launch { appContainer.libraryStore.clearHistory() } }) { Text("清空", fontSize = 12.sp) }
+
+        when (tab) {
+            TAB_HISTORY -> HistoryTab(
+                history = history,
+                onClear = { scope.launch { appContainer.libraryStore.clearHistory() } },
+                onOpenPlayer = onOpenPlayer,
+                upFocus = activeTabFocus,
+            )
+            TAB_FAVORITES -> {
+                val detail = detailId?.let { id -> (listOf(love) + userLists).firstOrNull { it.id == id } }
+                if (detail == null) {
+                    PlaylistGrid(
+                        playlists = listOf(love) + userLists,
+                        onPick = { detailId = it.id },
+                        onCreate = { scope.launch { appContainer.libraryStore.createList(nextNewName(userLists)) } },
+                        upFocus = activeTabFocus,
+                    )
+                } else {
+                    PlaylistDetailPane(
+                        playlist = detail,
+                        onBack = { detailId = null },
+                        onOpenPlayer = onOpenPlayer,
+                        onDelete = if (detail.id != Playlist.LOVE) {
+                            {
+                                scope.launch { appContainer.libraryStore.deleteList(detail.id) }
+                                detailId = null
+                            }
+                        } else null,
+                        upFocus = activeTabFocus,
+                    )
+                }
             }
         }
-        if (current.tracks.isEmpty()) {
-            EmptyHint("列表为空", Modifier.fillMaxSize())
+    }
+}
+
+private const val TAB_FAVORITES = "fav"
+private const val TAB_HISTORY = "history"
+
+/** Auto-name new playlists "新建歌单 N" so we don't need text input on the remote. The user can
+ *  delete unused ones from the detail view. */
+private fun nextNewName(existing: List<Playlist>): String {
+    val taken = existing.mapNotNull { p ->
+        Regex("^新建歌单 (\\d+)$").matchEntire(p.name)?.groupValues?.get(1)?.toIntOrNull()
+    }.toSet()
+    var n = 1
+    while (n in taken) n++
+    return "新建歌单 $n"
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun HistoryTab(
+    history: Playlist,
+    onClear: () -> Unit,
+    onOpenPlayer: () -> Unit,
+    upFocus: FocusRequester,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(history.name, fontSize = 18.sp, color = AppColors.TextPrimary)
+        Spacer(Modifier.weight(1f))
+        if (history.tracks.isNotEmpty()) {
+            TvPill(onClick = onClear) { Text("清空", fontSize = 12.sp) }
+        }
+    }
+    if (history.tracks.isEmpty()) {
+        EmptyHint("列表为空", Modifier.fillMaxSize())
+    } else {
+        val nowId = appContainer.playbackController.state.collectAsState().value.currentTrack?.id
+        TrackList(
+            history.tracks,
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .focusProperties {
+                    exit = { dir -> if (dir == FocusDirection.Up) upFocus else FocusRequester.Default }
+                },
+            nowPlayingId = nowId,
+        ) { idx ->
+            playList(history.tracks, idx); onOpenPlayer()
+        }
+    }
+}
+
+/** 4-column responsive grid of playlist covers + a "+ 新建歌单" tile at the end. */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun PlaylistGrid(
+    playlists: List<Playlist>,
+    onPick: (Playlist) -> Unit,
+    onCreate: () -> Unit,
+    upFocus: FocusRequester,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(4),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(vertical = 8.dp, horizontal = 4.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .focusProperties {
+                exit = { dir -> if (dir == FocusDirection.Up) upFocus else FocusRequester.Default }
+            },
+    ) {
+        items(playlists, key = { it.id }) { p ->
+            PlaylistCard(p, onClick = { onPick(p) })
+        }
+        item { CreatePlaylistCard(onClick = onCreate) }
+    }
+}
+
+@Composable
+private fun PlaylistCard(playlist: Playlist, onClick: () -> Unit) {
+    TvFocusable(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            CoverMosaic(
+                urls = playlist.tracks.take(4).map { it.picURL },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(10.dp)),
+            )
+            Spacer(Modifier.padding(top = 8.dp))
+            Text(
+                playlist.name,
+                color = AppColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "${playlist.tracks.size} 首",
+                color = AppColors.TextMuted,
+                fontSize = 11.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CreatePlaylistCard(onClick: () -> Unit) {
+    TvFocusable(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(AppColors.AccentGreenDim),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = "新建歌单",
+                    tint = AppColors.AccentGreen,
+                    modifier = Modifier.size(40.dp),
+                )
+            }
+            Spacer(Modifier.padding(top = 8.dp))
+            Text(
+                "新建歌单",
+                color = AppColors.AccentGreen,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text("自动命名", color = AppColors.TextMuted, fontSize = 11.sp)
+        }
+    }
+}
+
+/** 2x2 mosaic of up to 4 covers (or a single image when only 1 is available, or a fallback when
+ *  none). Reuses [Artwork] for each cell so loading + placeholder behaviour stays consistent. */
+@Composable
+private fun CoverMosaic(urls: List<String?>, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.background(Color(0x14FFFFFF))) {
+        val cleaned = urls.filterNotNull().filter { it.isNotEmpty() }
+        when (cleaned.size) {
+            0 -> Artwork(null, modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(0.dp))
+            1 -> Artwork(cleaned[0], modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(0.dp))
+            else -> {
+                // We always render a 2x2 grid for 2/3/4 covers; missing cells get a null artwork.
+                val padded = (cleaned + List(4) { null }).take(4)
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        Artwork(padded[0], modifier = Modifier.weight(1f).fillMaxHeight(), shape = RoundedCornerShape(0.dp))
+                        Artwork(padded[1], modifier = Modifier.weight(1f).fillMaxHeight(), shape = RoundedCornerShape(0.dp))
+                    }
+                    Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        Artwork(padded[2], modifier = Modifier.weight(1f).fillMaxHeight(), shape = RoundedCornerShape(0.dp))
+                        Artwork(padded[3], modifier = Modifier.weight(1f).fillMaxHeight(), shape = RoundedCornerShape(0.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Detail view shown when a playlist is tapped: header (mosaic + name + actions) + TrackList. */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun PlaylistDetailPane(
+    playlist: Playlist,
+    onBack: () -> Unit,
+    onOpenPlayer: () -> Unit,
+    onDelete: (() -> Unit)?,
+    upFocus: FocusRequester,
+) {
+    val playFocus = remember { FocusRequester() }
+    LaunchedEffect(playlist.id) { runCatching { playFocus.requestFocus() } }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
+            CoverMosaic(
+                urls = playlist.tracks.take(4).map { it.picURL },
+                modifier = Modifier.size(96.dp).clip(RoundedCornerShape(12.dp)),
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(playlist.name, color = AppColors.TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("${playlist.tracks.size} 首", color = AppColors.TextMuted, fontSize = 12.sp)
+                Spacer(Modifier.padding(top = 6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TvPill(
+                        onClick = {
+                            if (playlist.tracks.isNotEmpty()) {
+                                playList(playlist.tracks, 0); onOpenPlayer()
+                            }
+                        },
+                        selected = playlist.tracks.isNotEmpty(),
+                        focusRequester = playFocus,
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("播放全部", fontSize = 12.sp)
+                        }
+                    }
+                    TvPill(onClick = onBack, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
+                        Text("返回", fontSize = 12.sp)
+                    }
+                    if (onDelete != null) {
+                        TvPill(onClick = onDelete, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("删除歌单", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (playlist.tracks.isEmpty()) {
+            EmptyHint("歌单为空", Modifier.fillMaxSize())
         } else {
             val nowId = appContainer.playbackController.state.collectAsState().value.currentTrack?.id
-            TrackList(current.tracks, modifier = Modifier.fillMaxWidth().weight(1f), nowPlayingId = nowId) { idx ->
-                playList(current.tracks, idx); onOpenPlayer()
+            TrackList(
+                playlist.tracks,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight()
+                    .focusProperties {
+                        exit = { dir -> if (dir == FocusDirection.Up) playFocus else FocusRequester.Default }
+                    },
+                nowPlayingId = nowId,
+            ) { idx ->
+                playList(playlist.tracks, idx); onOpenPlayer()
             }
         }
     }

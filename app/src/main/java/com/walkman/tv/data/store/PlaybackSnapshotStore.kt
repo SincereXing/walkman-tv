@@ -9,12 +9,16 @@ import kotlinx.serialization.Serializable
 import java.io.File
 
 /** Minimal playback state persisted across app launches. URLs are not stored — they expire — so
- *  the queue is restored as Track metadata and re-resolved if the user (or auto-play) starts it. */
+ *  the queue is restored as Track metadata and re-resolved if the user (or auto-play) starts it.
+ *  [repeatModeOrdinal] stores RepeatMode by ordinal (OFF=0, ALL=1, ONE=2) so existing JSON files
+ *  without the field deserialize to OFF — but we default to ALL in PlaybackController. */
 @Serializable
 data class PlaybackSnapshot(
     val queue: List<Track> = emptyList(),
     val currentIndex: Int = -1,
     val wasPlaying: Boolean = false,
+    val repeatModeOrdinal: Int = 1, // RepeatMode.ALL
+    val shuffle: Boolean = false,
 )
 
 class PlaybackSnapshotStore(context: Context) {
