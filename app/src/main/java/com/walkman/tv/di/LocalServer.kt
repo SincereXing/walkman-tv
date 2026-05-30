@@ -10,11 +10,13 @@ import java.io.File
  * The TV side advertises the URL via a QR dialog.
  *
  * Routes (GET = HTML form, POST = receive payload):
- *   GET  /search           - search input form
- *   POST /api/search       - field "q" -> events.qrSearchKeyword
- *   GET  /script           - script-import form (URL + file upload)
- *   POST /api/script-url   - field "url" -> events.qrScriptUrl
- *   POST /api/script-file  - multipart field "file" -> events.qrScriptText
+ *   GET  /search             - search input form
+ *   POST /api/search         - field "q"    -> events.qrSearchKeyword
+ *   GET  /script             - script-import form (URL + file upload)
+ *   POST /api/script-url     - field "url"  -> events.qrScriptUrl
+ *   POST /api/script-file    - multipart field "file" -> events.qrScriptText
+ *   GET  /playlist-name      - playlist name input form (Chinese-friendly via phone IME)
+ *   POST /api/playlist-name  - field "name" -> events.qrPlaylistName
  */
 class LocalServer private constructor(
     private val events: AppEvents,
@@ -49,6 +51,7 @@ class LocalServer private constructor(
     private fun handleGet(session: IHTTPSession): Response = when (session.uri.trimEnd('/')) {
         "/search" -> html(SEARCH_HTML)
         "/script" -> html(SCRIPT_HTML)
+        "/playlist-name" -> html(PLAYLIST_NAME_HTML)
         "" -> html(INDEX_HTML)
         else -> notFound()
     }
@@ -77,6 +80,11 @@ class LocalServer private constructor(
                 } else {
                     html(donePage("未收到文件"))
                 }
+            }
+            "/api/playlist-name" -> {
+                val name = params["name"]?.firstOrNull().orEmpty().trim()
+                if (name.isNotEmpty()) events.postQrPlaylistName(name)
+                html(donePage("已发送：$name"))
             }
             else -> notFound()
         }
@@ -127,6 +135,7 @@ class LocalServer private constructor(
               <p>选择要在电视上做的事：</p>
               <div class="card"><a href="/search"><h2>🔍 搜索歌曲</h2></a></div>
               <div class="card"><a href="/script"><h2>📜 导入自定义音源</h2></a></div>
+              <div class="card"><a href="/playlist-name"><h2>✏️ 输入歌单名</h2></a></div>
             </body></html>
         """.trimIndent()
 
@@ -139,6 +148,20 @@ class LocalServer private constructor(
               <p>输入要在电视上搜索的关键词，提交后电视会自动开始搜索。</p>
               <form class="card" method="POST" action="/api/search">
                 <input name="q" placeholder="歌曲名 / 歌手 / 歌单" autofocus>
+                <button>发送到电视</button>
+              </form>
+            </body></html>
+        """.trimIndent()
+
+        private val PLAYLIST_NAME_HTML = """
+            <!doctype html><html><head><meta charset="utf-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>歌单名 · 随便听</title>$PAGE_CSS</head>
+            <body>
+              <h2>给歌单起个名字</h2>
+              <p>用手机输入法（中英文都行），提交后名字会出现在电视的对话框里。</p>
+              <form class="card" method="POST" action="/api/playlist-name">
+                <input name="name" placeholder="例如：开车听的歌" maxlength="24" autofocus>
                 <button>发送到电视</button>
               </form>
             </body></html>

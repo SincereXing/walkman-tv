@@ -193,9 +193,11 @@ fun PlaylistPickerDialog(track: Track, onDismiss: () -> Unit) {
 }
 
 /**
- * Name-input dialog for a playlist (used for 新建 and rename). A TvKeypad covers the bottom
- * half; the top half is the editable name + a cancel button. Auto-saves the entered text on
- * 完成; cancel closes without saving.
+ * Name-input dialog for a playlist. Chinese-friendly: shows a real BasicTextField (Compose
+ * pops the system IME — whatever Chinese / Pinyin keyboard the user has installed on the TV),
+ * plus a 手机扫码输入 affordance that opens a QR code pointing to LocalServer's
+ * /playlist-name form so the user can type on their phone instead. Name received from the QR
+ * flow is pushed into the field; the user can edit further or hit 完成 immediately.
  */
 @Composable
 fun PlaylistNameDialog(
@@ -205,7 +207,22 @@ fun PlaylistNameDialog(
     onConfirm: (String) -> Unit,
 ) {
     var name by remember { mutableStateOf(initial) }
-    val cancelFocus = remember { FocusRequester() }
+    var showQr by remember { mutableStateOf(false) }
+    val fieldFocus = remember { FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
+    // Auto-focus the text field on open so the system IME can be invoked immediately.
+    LaunchedEffect(Unit) {
+        runCatching { fieldFocus.requestFocus() }
+        runCatching { keyboard?.show() }
+    }
+    // QR-submitted names get pushed straight into the field.
+    LaunchedEffect(Unit) {
+        appContainer.events.qrPlaylistName.collect { received ->
+            name = received.take(24)
+            showQr = false
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -213,52 +230,107 @@ fun PlaylistNameDialog(
     ) {
         Column(
             modifier = Modifier
-                .width(360.dp)
+                .width(440.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(AppColors.BgPanel)
                 .padding(horizontal = 22.dp, vertical = 20.dp),
         ) {
             Text(title, color = AppColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.size(10.dp))
-            // Editable name display (no real text-edit caret — keypad drives the text state).
-            Box(
+
+            // Real editable text field — Compose brings up the system IME on focus, supporting
+            // whichever Chinese / pinyin keyboard the user has installed.
+            androidx.compose.foundation.text.BasicTextField(
+                value = name,
+                onValueChange = { v -> if (v.length <= 24) name = v },
+                singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(
+                    color = AppColors.TextPrimary,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(AppColors.AccentGreen),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onDone = {
+                        val trimmed = name.trim()
+                        if (trimmed.isNotEmpty()) onConfirm(trimmed)
+                    },
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(AppColors.BgDeep)
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-            ) {
-                Text(
-                    text = name.ifEmpty { "请输入歌单名" },
-                    color = if (name.isEmpty()) AppColors.TextMuted else AppColors.TextPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Spacer(Modifier.size(14.dp))
-            TvKeypad(
-                onAppend = { ch -> if (name.length < 24) name += ch },
-                onBackspace = { if (name.isNotEmpty()) name = name.dropLast(1) },
-                onClear = { name = "" },
-                onConfirm = {
-                    val trimmed = name.trim()
-                    if (trimmed.isNotEmpty()) onConfirm(trimmed)
+                    .padding(horizontal = 14.dp, vertical = 14.dp)
+                    .focusRequester(fieldFocus),
+                decorationBox = { inner ->
+                    Box {
+                        if (name.isEmpty()) {
+                            Text(
+                                "请输入歌单名（按确认键调出系统输入法）",
+                                color = AppColors.TextMuted,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        inner()
+                    }
                 },
-                confirmLabel = "完成",
             )
-            Spacer(Modifier.size(10.dp))
+            Spacer(Modifier.size(6.dp))
+            Text(
+                "中文输入不便？点击「手机扫码输入」用手机键盘",
+                color = AppColors.TextMuted,
+                fontSize = 11.sp,
+            )
+
+            Spacer(Modifier.size(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                TvPill(
+                    onClick = { showQr = true },
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text("手机扫码输入", fontSize = 13.sp)
+                }
                 Spacer(Modifier.weight(1f))
                 TvPill(
                     onClick = onDismiss,
-                    focusRequester = cancelFocus,
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
                 ) {
                     Text("取消", fontSize = 13.sp)
                 }
+                TvPill(
+                    onClick = {
+                        val trimmed = name.trim()
+                        if (trimmed.isNotEmpty()) onConfirm(trimmed)
+                    },
+                    selected = name.isNotBlank(),
+                    contentPadding = PaddingValues(horizontal = 22.dp, vertical = 8.dp),
+                ) {
+                    Text("完成", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
+        }
+    }
+
+    if (showQr) {
+        val ip = remember { com.walkman.tv.di.getLanIp() }
+        val port = appContainer.localServer?.boundPort
+        if (ip != null && port != null) {
+            QrDialog(
+                url = "http://$ip:$port/playlist-name",
+                title = "扫码输入名字",
+                subtitle = "在手机上输入（中英文都行），提交后名字会自动填入输入框",
+                onDismiss = { showQr = false },
+            )
+        } else {
+            // Best-effort fallback when the LAN server isn't up — just close the QR overlay so
+            // the user can fall back to TV-side IME.
+            LaunchedEffect(Unit) { showQr = false }
         }
     }
 }
