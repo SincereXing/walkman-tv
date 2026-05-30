@@ -150,7 +150,9 @@ private fun ExitConfirmDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
                 .clip(RoundedCornerShape(16.dp))
                 .background(AppColors.BgPanel)
                 .padding(horizontal = 24.dp, vertical = 22.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            // Title + subtitle left-aligned (the default Start) so they sit flush with the
+            // dialog padding edge. Pairing centred text with right-aligned actions felt
+            // unbalanced; this matches the standard "body left, actions right" dialog pattern.
         ) {
             Text(
                 text = "退出应用",

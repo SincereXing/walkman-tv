@@ -52,7 +52,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
@@ -465,6 +468,7 @@ private fun VinylGrooves(modifier: Modifier) {
 
 // ============== Transport ======================================================================
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun TransportBar(
     state: com.walkman.tv.playback.PlaybackState,
@@ -481,18 +485,31 @@ private fun TransportBar(
 ) {
     val track = state.currentTrack
     val faved = track?.let { t -> love.tracks.any { it.id == t.id } } ?: false
-    // Box + align modifiers instead of sub-Rows separated by Spacer(weight=1f). With the old
-    // layout the wide Spacers seemed to confuse Compose's geometric focus search — D-pad would
-    // 'stop' before crossing from center to left/right. Putting all buttons as siblings of one
-    // Box, each anchored with Modifier.align, makes the focus traversal reliable.
+    // Cross-group focus handoff. Geometric focus search alone doesn't reliably jump from the
+    // centre group to the side groups when their pills are 300-500dp apart on a 1080p TV, so
+    // we register a focus target on the first pill of each side group and let
+    // `focusProperties.exit` on the centre group's focusGroup redirect D-pad Right/Left to it.
+    val tuneFocus = remember { FocusRequester() }
+    val mvFocus = remember { FocusRequester() }
+    val faveFocus = remember { FocusRequester() }
+
     Box(modifier = Modifier.fillMaxWidth()) {
-        // Left group anchored to CenterStart.
+        // Left group anchored to CenterStart. Mirrors centre→right: when the user D-pads Right
+        // from Tune/HiRes, exit-redirect lands on the play button.
         Row(
-            modifier = Modifier.align(Alignment.CenterStart),
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .focusGroup()
+                .focusProperties {
+                    exit = { dir ->
+                        if (dir == FocusDirection.Right) playFocusRequester ?: FocusRequester.Default
+                        else FocusRequester.Default
+                    }
+                },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            IconPill(Icons.Filled.Tune, onClick = onTuneClick)
+            IconPill(Icons.Filled.Tune, focusRequester = tuneFocus, onClick = onTuneClick)
             state.quality?.let {
                 TvPill(
                     onClick = { /* future: open a quality picker */ },
@@ -503,9 +520,21 @@ private fun TransportBar(
                 }
             }
         }
-        // Center group anchored to Center.
+        // Center group. Exit-handoff: Right -> MV (first pill of right group),
+        // Left -> Tune (first pill of left group).
         Row(
-            modifier = Modifier.align(Alignment.Center),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .focusGroup()
+                .focusProperties {
+                    exit = { dir ->
+                        when (dir) {
+                            FocusDirection.Right -> mvFocus
+                            FocusDirection.Left -> tuneFocus
+                            else -> FocusRequester.Default
+                        }
+                    }
+                },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -530,17 +559,27 @@ private fun TransportBar(
             IconPill(
                 if (faved) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                 active = faved,
+                focusRequester = faveFocus,
                 onClick = onToggleFav,
             )
         }
-        // Right group anchored to CenterEnd.
+        // Right group anchored to CenterEnd. Mirrors centre→left: D-pad Left from MV lands on
+        // the heart button instead of skipping across the whole centre group.
         Row(
-            modifier = Modifier.align(Alignment.CenterEnd),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .focusGroup()
+                .focusProperties {
+                    exit = { dir ->
+                        if (dir == FocusDirection.Left) faveFocus else FocusRequester.Default
+                    }
+                },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TvPill(
                 onClick = onMv,
+                focusRequester = mvFocus,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
             ) {
                 Text("MV", fontSize = 12.sp, fontWeight = FontWeight.Bold)
