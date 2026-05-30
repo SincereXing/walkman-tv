@@ -100,30 +100,27 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
 
     val track = state.currentTrack
 
-    // Park focus on the central play button — but ONLY at moments where the previously focused
-    // element is gone:
-    //   * first composition (no focus yet);
-    //   * MV exits back to audio (the AndroidView PlayerView swallowed focus);
-    //   * the queue drawer closes (the focused drawer item just disappeared).
-    // We deliberately do NOT key on track.id — that would yank focus back to play on every
+    var showEqDialog by remember { mutableStateOf(false) }
+
+    // Park focus on the central play button at moments where the previously focused element is
+    // gone. We deliberately do NOT key on track.id — that would yank focus back to play on every
     // track change, which is what made the player feel 'dead' after one operation.
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(80)
-        runCatching { playFocus.requestFocus() }
-    }
+    //
+    // Each of these uses tryRequestFocus() (retries for ~250ms) because dialogs/drawers tear
+    // down asynchronously: a single delay(80) often races the recomposition and silently fails.
+    LaunchedEffect(Unit) { tryRequestFocus(playFocus) }
     LaunchedEffect(state.isMv) {
-        if (!state.isMv) {
-            kotlinx.coroutines.delay(80)
-            runCatching { playFocus.requestFocus() }
-        }
+        // MV's AndroidView PlayerView swallows focus; reclaim it when we come back to audio.
+        if (!state.isMv) tryRequestFocus(playFocus)
     }
     LaunchedEffect(showMvQueue) {
-        if (!showMvQueue) {
-            kotlinx.coroutines.delay(80)
-            runCatching { playFocus.requestFocus() }
-        }
+        // The drawer item that was focused just disappeared.
+        if (!showMvQueue) tryRequestFocus(playFocus)
     }
-    var showEqDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(showEqDialog) {
+        // Same story for the EQ dialog — '完成' is gone, focus needs a new home.
+        if (!showEqDialog) tryRequestFocus(playFocus)
+    }
 
     BackHandler(enabled = true) {
         when {
@@ -252,15 +249,13 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 playFocusRequester = playFocus,
             )
         }
-        // Queue drawer: now available in audio mode too (button) and in MV mode (menu key).
+        // Queue drawer. Selecting a row plays that track but keeps the drawer open so the
+        // user can keep browsing; back-key closes the drawer (handled by BackHandler above).
         MvQueueDrawer(
             visible = showMvQueue,
             queue = state.queue,
             currentIndex = state.index,
-            onSelect = { idx ->
-                showMvQueue = false
-                controller.playAt(idx)
-            },
+            onSelect = { idx -> controller.playAt(idx) },
             modifier = Modifier.align(Alignment.CenterEnd),
         )
 
@@ -698,6 +693,19 @@ private fun IconPill(
 private fun fmt(ms: Long): String {
     val s = (ms / 1000).toInt()
     return "%02d:%02d".format(s / 60, s % 60)
+}
+
+/**
+ * Try requesting focus up to 5 times across ~250ms. Dialogs/drawers tear down asynchronously,
+ * so a single delay(80) + requestFocus() commonly fires before the target composable has its
+ * modifier re-attached, and the request silently fails. Looping until success is the canonical
+ * Compose-for-TV workaround.
+ */
+private suspend fun tryRequestFocus(target: FocusRequester) {
+    repeat(5) {
+        kotlinx.coroutines.delay(50)
+        if (runCatching { target.requestFocus() }.isSuccess) return
+    }
 }
 
 @Composable
