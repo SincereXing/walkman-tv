@@ -87,14 +87,19 @@ private fun NowPlayingPanel(onOpenPlayer: () -> Unit, modifier: Modifier = Modif
         } else {
             Text("暂无播放，去推荐里点歌开始吧", color = AppColors.TextSecondary, fontSize = 14.sp)
         }
-        // Two-line waveform between the lyric and the transport controls.
-        // Only shown when a track is loaded, and constrained to the cover's width so it
-        // doesn't extend past the left/right edges of the disc.
+        // Waveform + read-only progress bar + time row between the lyric and the transport
+        // controls. All constrained to the cover's width (240dp). Hidden entirely when no track.
         if (track != null) {
             Spacer(Modifier.height(10.dp))
             MiniLineWaveform(
                 isPlaying = state.isPlaying,
                 modifier = Modifier.width(240.dp).height(24.dp),
+            )
+            Spacer(Modifier.height(6.dp))
+            MiniProgressBar(
+                positionMs = state.positionMs,
+                durationMs = state.durationMs,
+                modifier = Modifier.width(240.dp),
             )
         }
         Spacer(Modifier.height(10.dp))
@@ -111,6 +116,41 @@ private fun NowPlayingPanel(onOpenPlayer: () -> Unit, modifier: Modifier = Modif
             CircleControl(Icons.Filled.SkipNext) { controller.next() }
         }
     }
+}
+
+/** Read-only progress bar + mm:ss time labels for the recommend NowPlayingPanel.
+ *  No seek interaction here — the full-screen player handles dragging. */
+@Composable
+private fun MiniProgressBar(positionMs: Long, durationMs: Long, modifier: Modifier = Modifier) {
+    val fraction = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+    Column(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(AppColors.Card),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .fillMaxHeight()
+                    .background(AppColors.AccentGreen),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 3.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(fmtMillis(positionMs), color = AppColors.TextMuted, fontSize = 10.sp)
+            Text(fmtMillis(durationMs), color = AppColors.TextMuted, fontSize = 10.sp)
+        }
+    }
+}
+
+private fun fmtMillis(ms: Long): String {
+    val s = (ms / 1000).toInt().coerceAtLeast(0)
+    return "%02d:%02d".format(s / 60, s % 60)
 }
 
 /** Two flowing sine wave lines, ~24dp tall, for the recommend NowPlaying panel. */
