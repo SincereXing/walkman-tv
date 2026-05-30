@@ -167,7 +167,6 @@ class PlaybackController(
                     error = e.message ?: "无法播放",
                 )
             }
-        }
     }
 
     fun togglePlay() {
