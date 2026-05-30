@@ -157,7 +157,10 @@ private fun SearchKeypad(
     onClear: () -> Unit,
     onSearch: () -> Unit,
 ) {
-    val letterRows = listOf("ABCDEFG", "HIJKLMN", "OPQRSTU", "VWXYZ")
+    // 6 columns. Letters first (5 rows of 6 = 26 with last row holding Y Z), then a separator,
+    // then digits in 2 quieter rows, then a control row.
+    val letterRows = listOf("ABCDEF", "GHIJKL", "MNOPQR", "STUVWX", "YZ")
+    val digitRows = listOf("012345", "6789")
     val firstKey = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { firstKey.requestFocus() } }
 
@@ -173,10 +176,13 @@ private fun SearchKeypad(
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            "0123456789".forEach { c -> KeyButton(c.toString()) { onAppend(c) } }
+        Spacer(Modifier.size(6.dp))
+        digitRows.forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                row.forEach { c -> KeyButton(c.toString()) { onAppend(c) } }
+            }
         }
-        Spacer(Modifier.size(4.dp))
+        Spacer(Modifier.size(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             KeyButton("删除", wide = true) { onBackspace() }
             KeyButton("清空", wide = true) { onClear() }
@@ -193,6 +199,8 @@ private fun KeyButton(
     focusRequester: FocusRequester? = null,
     onClick: () -> Unit,
 ) {
+    // Letter/digit key = 44 wide, wide key = 92 (matches 2 letter slots + a gap).
+    // Letter row total: 6*44 + 5*4 = 284dp. Control row: 3*92 + 2*6 = 288dp ≈ 284dp.
     TvPill(
         onClick = onClick,
         selected = primary,
@@ -200,7 +208,7 @@ private fun KeyButton(
         contentPadding = PaddingValues(0.dp),
     ) {
         Box(
-            modifier = Modifier.size(width = if (wide) 92.dp else 40.dp, height = 36.dp),
+            modifier = Modifier.size(width = if (wide) 92.dp else 44.dp, height = 38.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
