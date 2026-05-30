@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -17,10 +20,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,11 +54,35 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val settings by appContainer.settingsStore.settings.collectAsState()
     val scripts by appContainer.scriptStore.scripts.collectAsState()
     var url by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<String?>(null) }
     var showQr by remember { mutableStateOf(false) }
+
+    // System file picker (SAF) for .js scripts.
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                status = "正在读取文件…"
+                val raw = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openInputStream(uri)?.use {
+                            it.readBytes().toString(Charsets.UTF_8)
+                        }
+                    }.getOrNull()
+                }
+                if (raw.isNullOrEmpty()) {
+                    status = "读取文件失败"
+                } else {
+                    status = "正在导入文件…"
+                    val r = appContainer.scriptStore.import(raw)
+                    status = r.fold({ "已导入：${it.name}" }, { "导入失败：${it.message}" })
+                }
+            }
+        }
+    }
 
     // Receive script payloads from the phone-to-TV QR flow.
     LaunchedEffect(Unit) {
@@ -96,15 +127,20 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         }
 
         Section("自定义音源") {
+            Text(
+                "粘贴 URL 自动远程拉取；直接粘贴脚本则按 JS 代码导入；或上传 .js 文件；扫码可在手机/电脑操作。",
+                color = AppColors.TextMuted,
+                fontSize = 12.sp,
+            )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("粘贴脚本 URL（.js）", color = AppColors.TextMuted) },
+                    placeholder = { Text("URL（http://...）或直接粘贴 JS 代码", color = AppColors.TextMuted) },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { importFromUrl(scope, url) { status = it } }),
+                    keyboardActions = KeyboardActions(onDone = { importInput(scope, url) { status = it } }),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = AppColors.TextPrimary,
                         unfocusedTextColor = AppColors.TextPrimary,
@@ -114,7 +150,22 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     ),
                 )
                 Spacer(Modifier.width(8.dp))
-                TvPill(onClick = { importFromUrl(scope, url) { status = it } }, selected = true) { Text("导入", fontSize = 14.sp) }
+                TvPill(onClick = { importInput(scope, url) { status = it } }, selected = true) { Text("导入", fontSize = 14.sp) }
+                Spacer(Modifier.width(8.dp))
+                TvPill(
+                    onClick = {
+                        runCatching {
+                            filePicker.launch(arrayOf("application/javascript", "text/javascript", "application/x-javascript", "text/plain", "*/*"))
+                        }.onFailure { status = "未找到可用的文件选择器" }
+                    },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("上传文件", fontSize = 13.sp)
+                    }
+                }
                 Spacer(Modifier.width(8.dp))
                 TvPill(
                     onClick = { showQr = true },
@@ -177,6 +228,27 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Auto-detects the input: if it looks like an http(s) URL, fetches the URL and imports the
+ * body; otherwise treats the input as raw JS code and imports it directly. Used by both the
+ * "导入" button and the IME "完成" action.
+ */
+private fun importInput(scope: kotlinx.coroutines.CoroutineScope, input: String, onStatus: (String) -> Unit) {
+    if (input.isBlank()) return
+    val trimmed = input.trim()
+    val isUrl = trimmed.startsWith("http://", ignoreCase = true) ||
+        trimmed.startsWith("https://", ignoreCase = true)
+    scope.launch {
+        onStatus(if (isUrl) "正在下载脚本…" else "正在导入脚本…")
+        val result = runCatching {
+            val raw = if (isUrl) appContainer.fetchText(trimmed) else trimmed
+            appContainer.scriptStore.import(raw).getOrThrow()
+        }
+        onStatus(result.fold({ "已导入：${it.name}" }, { "导入失败：${it.message}" }))
+    }
+}
+
+// Kept for backwards-compat callers that already exist; just delegates.
 private fun importFromUrl(scope: kotlinx.coroutines.CoroutineScope, url: String, onStatus: (String) -> Unit) {
     if (url.isBlank()) return
     scope.launch {
