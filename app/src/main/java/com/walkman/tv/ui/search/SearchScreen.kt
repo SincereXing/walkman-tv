@@ -2,6 +2,8 @@ package com.walkman.tv.ui.search
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -34,13 +36,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
+import androidx.tv.material3.Icon
 import com.walkman.tv.data.model.SonglistInfo
 import com.walkman.tv.data.model.SourceID
 import com.walkman.tv.data.model.Track
+import com.walkman.tv.di.getLanIp
 import com.walkman.tv.ui.appContainer
 import com.walkman.tv.ui.components.EmptyHint
 import com.walkman.tv.ui.components.LoadingState
 import com.walkman.tv.ui.components.MediaCard
+import com.walkman.tv.ui.components.QrDialog
 import com.walkman.tv.ui.components.TrackList
 import com.walkman.tv.ui.components.TvPill
 import com.walkman.tv.ui.playList
@@ -58,6 +63,7 @@ fun SearchScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
     var songlists by remember { mutableStateOf<List<SonglistInfo>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var searched by remember { mutableStateOf(false) }
+    var showQr by remember { mutableStateOf(false) }
 
     fun runSearch() {
         if (query.isBlank()) return
@@ -90,10 +96,29 @@ fun SearchScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
         if (searched) runSearch()
     }
 
+    // Phone-to-TV: incoming search keywords from the QR-served form.
+    LaunchedEffect(Unit) {
+        appContainer.events.qrSearchKeyword.collect { k ->
+            query = k
+            showQr = false
+            runSearch()
+        }
+    }
+
     Row(modifier = modifier.fillMaxSize().padding(top = 8.dp)) {
         // LEFT: search input + virtual keypad
         Column(modifier = Modifier.width(360.dp).fillMaxHeight().padding(end = 12.dp)) {
-            SearchInputBox(query)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.weight(1f)) { SearchInputBox(query) }
+                Spacer(Modifier.width(8.dp))
+                TvPill(
+                    onClick = { showQr = true },
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    contentPadding = PaddingValues(10.dp),
+                ) {
+                    Icon(Icons.Filled.QrCode2, contentDescription = "扫码搜索", modifier = Modifier.size(22.dp))
+                }
+            }
             Spacer(Modifier.padding(top = 12.dp))
             SearchKeypad(
                 onAppend = { ch -> query += ch },
@@ -126,6 +151,38 @@ fun SearchScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
             )
         }
     }
+
+    if (showQr) {
+        val ip = remember { getLanIp() }
+        val port = appContainer.localServer?.boundPort
+        if (ip != null && port != null) {
+            QrDialog(
+                url = "http://$ip:$port/search",
+                title = "扫码搜索",
+                subtitle = "用手机浏览器扫码，输入关键词后会自动回到电视搜索",
+                onDismiss = { showQr = false },
+            )
+        } else {
+            QrUnavailableDialog(onDismiss = { showQr = false })
+        }
+    }
+}
+
+@Composable
+private fun QrUnavailableDialog(onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("无法启动扫码") },
+        text = { Text("请确认电视已连接 Wi-Fi 且本地服务已启动后再试。") },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text("好", color = AppColors.AccentGreen)
+            }
+        },
+        containerColor = AppColors.BgPanel,
+        titleContentColor = AppColors.TextPrimary,
+        textContentColor = AppColors.TextSecondary,
+    )
 }
 
 // MARK: - Left panel ---------------------------------------------------------------------------

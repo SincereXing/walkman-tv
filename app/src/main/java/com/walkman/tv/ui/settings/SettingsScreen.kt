@@ -9,12 +9,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,9 +33,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import com.walkman.tv.data.model.Quality
+import com.walkman.tv.di.getLanIp
 import com.walkman.tv.ui.appContainer
+import com.walkman.tv.ui.components.QrDialog
 import com.walkman.tv.ui.components.TvFocusable
 import com.walkman.tv.ui.components.TvPill
 import com.walkman.tv.ui.theme.AppColors
@@ -42,6 +51,23 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val scripts by appContainer.scriptStore.scripts.collectAsState()
     var url by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<String?>(null) }
+    var showQr by remember { mutableStateOf(false) }
+
+    // Receive script payloads from the phone-to-TV QR flow.
+    LaunchedEffect(Unit) {
+        appContainer.events.qrScriptUrl.collect { u ->
+            showQr = false
+            importFromUrl(scope, u) { status = it }
+        }
+    }
+    LaunchedEffect(Unit) {
+        appContainer.events.qrScriptText.collect { raw ->
+            showQr = false
+            status = "正在导入上传的脚本…"
+            val r = appContainer.scriptStore.import(raw)
+            status = r.fold({ "已导入：${it.name}" }, { "导入失败：${it.message}" })
+        }
+    }
 
     Column(
         modifier = modifier.fillMaxSize().padding(top = 8.dp).verticalScroll(rememberScrollState()),
@@ -87,8 +113,16 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         cursorColor = AppColors.AccentGreen,
                     ),
                 )
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(8.dp))
                 TvPill(onClick = { importFromUrl(scope, url) { status = it } }, selected = true) { Text("导入", fontSize = 14.sp) }
+                Spacer(Modifier.width(8.dp))
+                TvPill(
+                    onClick = { showQr = true },
+                    shape = CircleShape,
+                    contentPadding = PaddingValues(10.dp),
+                ) {
+                    Icon(Icons.Filled.QrCode2, contentDescription = "扫码导入", modifier = Modifier.size(22.dp))
+                }
             }
             status?.let { Text(it, color = AppColors.TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)) }
 
@@ -112,6 +146,33 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     }
                 }
             }
+        }
+    }
+
+    if (showQr) {
+        val ip = remember { getLanIp() }
+        val port = appContainer.localServer?.boundPort
+        if (ip != null && port != null) {
+            QrDialog(
+                url = "http://$ip:$port/script",
+                title = "扫码导入音源",
+                subtitle = "手机扫码后可粘贴脚本 URL 或上传 .js 文件，电视会自动加载",
+                onDismiss = { showQr = false },
+            )
+        } else {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showQr = false },
+                title = { Text("无法启动扫码") },
+                text = { Text("请确认电视已连接 Wi-Fi 且本地服务已启动后再试。") },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = { showQr = false }) {
+                        Text("好", color = AppColors.AccentGreen)
+                    }
+                },
+                containerColor = AppColors.BgPanel,
+                titleContentColor = AppColors.TextPrimary,
+                textContentColor = AppColors.TextSecondary,
+            )
         }
     }
 }

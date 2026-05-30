@@ -33,6 +33,10 @@ class AppContainer(val appContext: Context) {
     /** Process-wide event bus for hardware-key events (e.g. KEYCODE_MENU). */
     val events: AppEvents = AppEvents()
 
+    /** In-app HTTP server backing the phone-to-TV QR flow. null when start failed. */
+    @Volatile var localServer: LocalServer? = null
+        private set
+
     val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(12, TimeUnit.SECONDS)
@@ -97,6 +101,10 @@ class AppContainer(val appContext: Context) {
 
     /** Load persisted data and wire settings → playback. Called once at startup. */
     fun bootstrap() {
+        // Bring up the LAN HTTP server (best-effort; QR features just won't work if it fails).
+        if (localServer == null) {
+            localServer = LocalServer.start(events)
+        }
         appScope.launch {
             settingsStore.loadAll()
             libraryStore.loadAll()

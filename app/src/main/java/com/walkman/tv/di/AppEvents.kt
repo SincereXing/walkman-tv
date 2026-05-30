@@ -6,9 +6,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
 /**
- * Process-wide hardware-key event bus. [MainActivity] forwards remote key presses that need to
- * cross the AndroidView boundary (e.g. KEYCODE_MENU pressed while a PlayerView has focus) into
- * the Compose tree via these flows.
+ * Process-wide event bus. [MainActivity] forwards hardware-key presses that need to cross the
+ * AndroidView boundary (e.g. KEYCODE_MENU while a PlayerView has focus). [LocalServer] forwards
+ * payloads received over the phone-to-TV QR flow (search keyword, custom-source script URL or
+ * raw script content).
  */
 class AppEvents {
     private val _menuKey = MutableSharedFlow<Unit>(
@@ -17,7 +18,26 @@ class AppEvents {
     )
     val menuKey: SharedFlow<Unit> = _menuKey.asSharedFlow()
 
-    fun postMenuKey() {
-        _menuKey.tryEmit(Unit)
-    }
+    private val _qrSearchKeyword = MutableSharedFlow<String>(
+        extraBufferCapacity = 4,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val qrSearchKeyword: SharedFlow<String> = _qrSearchKeyword.asSharedFlow()
+
+    private val _qrScriptUrl = MutableSharedFlow<String>(
+        extraBufferCapacity = 4,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val qrScriptUrl: SharedFlow<String> = _qrScriptUrl.asSharedFlow()
+
+    private val _qrScriptText = MutableSharedFlow<String>(
+        extraBufferCapacity = 2,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val qrScriptText: SharedFlow<String> = _qrScriptText.asSharedFlow()
+
+    fun postMenuKey() { _menuKey.tryEmit(Unit) }
+    fun postQrSearchKeyword(q: String) { _qrSearchKeyword.tryEmit(q) }
+    fun postQrScriptUrl(url: String) { _qrScriptUrl.tryEmit(url) }
+    fun postQrScriptText(text: String) { _qrScriptText.tryEmit(text) }
 }

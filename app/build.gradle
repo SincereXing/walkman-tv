@@ -103,4 +103,8 @@ dependencies {
 
     // Custom-source JS engine (kept from the RN app)
     implementation "wang.harlon.quickjs:wrapper-android:2.4.0"
+
+    // Phone-to-TV QR flow: tiny in-app HTTP server + QR encoder
+    implementation "org.nanohttpd:nanohttpd:2.3.1"
+    implementation "com.google.zxing:core:3.5.3"
 }
