@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -194,8 +195,6 @@ private fun NowPlayingChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Mini vinyl: rotates when playing, freezes when paused. graphicsLayer makes the rotation a
-    // draw-phase transform so AsyncImage isn't recomposed every animation frame.
     val rotation = remember { Animatable(0f) }
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
@@ -207,46 +206,75 @@ private fun NowPlayingChip(
             }
         }
     }
-    TvPill(
+    // Underline-style chip: transparent background, green underline beneath the title.
+    // Focus state still goes through tv-material Surface (clickable) — when focused we get the
+    // existing green pill, but the default state is now a clean text + underline instead of
+    // the heavy NavInactiveBg pill.
+    androidx.tv.material3.Surface(
         onClick = onClick,
         modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+        shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
+        colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = AppColors.AccentGreen,
+            pressedContainerColor = AppColors.AccentGreen,
+            contentColor = AppColors.TextPrimary,
+            focusedContentColor = AppColors.BgDeep,
+            pressedContentColor = AppColors.BgDeep,
+        ),
+        scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
+        border = androidx.tv.material3.ClickableSurfaceDefaults.border(
+            border = androidx.tv.material3.Border(BorderStroke(0.dp, Color.Transparent)),
+            focusedBorder = androidx.tv.material3.Border(BorderStroke(2.dp, AppColors.AccentGreen)),
+        ),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(16.dp)
-                    .clip(CircleShape)
-                    .background(AppColors.AccentGreen.copy(alpha = 0.25f)),
-                contentAlignment = Alignment.Center,
-            ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .size(14.dp)
-                        .graphicsLayer { rotationZ = rotation.value }
-                        .clip(CircleShape),
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(AppColors.AccentGreen.copy(alpha = 0.25f)),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    com.walkman.tv.ui.components.Artwork(
-                        picURL,
-                        modifier = Modifier.size(14.dp),
-                        shape = CircleShape,
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .graphicsLayer { rotationZ = rotation.value }
+                            .clip(CircleShape),
+                    ) {
+                        com.walkman.tv.ui.components.Artwork(
+                            picURL,
+                            modifier = Modifier.size(14.dp),
+                            shape = CircleShape,
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(3.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black),
                     )
                 }
-                // Tiny spindle hole.
-                Box(
-                    modifier = Modifier
-                        .size(3.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black),
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    text = title,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.width(120.dp),
                 )
             }
-            Spacer(Modifier.width(7.dp))
-            Text(
-                text = title,
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(120.dp),
+            // Thin green underline accent under the chip content.
+            Spacer(Modifier.height(3.dp))
+            Box(
+                modifier = Modifier
+                    .width(150.dp)
+                    .height(1.5.dp)
+                    .background(AppColors.AccentGreen),
             )
         }
     }

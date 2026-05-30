@@ -102,24 +102,16 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
 
     var showEqDialog by remember { mutableStateOf(false) }
 
-    // Park focus on the central play button at moments where the previously focused element is
-    // gone. We deliberately do NOT key on track.id — that would yank focus back to play on every
-    // track change, which is what made the player feel 'dead' after one operation.
+    // Single combined focus restoration: when no modal is open AND we're not in MV mode,
+    // focus the central play button. Re-fires on transitions back to the 'audio + no modal'
+    // state (MV exit / drawer close / EQ dialog close / first composition). Importantly NOT
+    // keyed on track.id, so plain track advances don't steal focus.
     //
-    // Each of these uses tryRequestFocus() (retries for ~250ms) because dialogs/drawers tear
-    // down asynchronously: a single delay(80) often races the recomposition and silently fails.
-    LaunchedEffect(Unit) { tryRequestFocus(playFocus) }
-    LaunchedEffect(state.isMv) {
-        // MV's AndroidView PlayerView swallows focus; reclaim it when we come back to audio.
-        if (!state.isMv) tryRequestFocus(playFocus)
-    }
-    LaunchedEffect(showMvQueue) {
-        // The drawer item that was focused just disappeared.
-        if (!showMvQueue) tryRequestFocus(playFocus)
-    }
-    LaunchedEffect(showEqDialog) {
-        // Same story for the EQ dialog — '完成' is gone, focus needs a new home.
-        if (!showEqDialog) tryRequestFocus(playFocus)
+    // Consolidating to ONE LaunchedEffect avoids four parallel tryRequestFocus loops fighting
+    // each other in the 250ms after first composition.
+    val wantsFocus = !state.isMv && !showMvQueue && !showEqDialog
+    LaunchedEffect(wantsFocus) {
+        if (wantsFocus) tryRequestFocus(playFocus)
     }
 
     BackHandler(enabled = true) {
@@ -270,8 +262,13 @@ private fun EqualizerDialog(onDismiss: () -> Unit) {
     val eq = appContainer.equalizerManager
     val presets = remember { eq.presets }
     var selected by remember { mutableStateOf(eq.currentPresetIndex) }
-    val closeFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { closeFocus.requestFocus() } }
+    // Auto-focus the currently-selected preset (not the close button). This lets the user
+    // immediately D-pad up/down through the list — focusing '完成' meant they had to first
+    // D-pad up past the spacer to even reach the presets, and that's where the failure was.
+    val activeRowFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        tryRequestFocus(activeRowFocus)
+    }
 
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
@@ -301,7 +298,9 @@ private fun EqualizerDialog(onDismiss: () -> Unit) {
                                 selected = idx
                                 eq.applyPreset(idx)
                             },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .let { if (active) it.focusRequester(activeRowFocus) else it },
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
@@ -330,7 +329,6 @@ private fun EqualizerDialog(onDismiss: () -> Unit) {
                 TvPill(
                     onClick = onDismiss,
                     selected = true,
-                    focusRequester = closeFocus,
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp, vertical = 8.dp),
                 ) {
                     Text("完成", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -551,16 +549,19 @@ private fun TransportBar(
 ) {
     val track = state.currentTrack
     val faved = track?.let { t -> love.tracks.any { it.id == t.id } } ?: false
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Left: EQ-style icon + Hi-Res pill (mirrors the reference layout).
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Box + align modifiers instead of sub-Rows separated by Spacer(weight=1f). With the old
+    // layout the wide Spacers seemed to confuse Compose's geometric focus search — D-pad would
+    // 'stop' before crossing from center to left/right. Putting all buttons as siblings of one
+    // Box, each anchored with Modifier.align, makes the focus traversal reliable.
+    Box(modifier = Modifier.fillMaxWidth()) {
+        // Left group anchored to CenterStart.
+        Row(
+            modifier = Modifier.align(Alignment.CenterStart),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             IconPill(Icons.Filled.Tune, onClick = onTuneClick)
             state.quality?.let {
-                // Selected = true gives the AccentGreenDim background + green text + thin green
-                // outline — same passive-active look as the reference 'Hi-Res ▼' pill.
                 TvPill(
                     onClick = { /* future: open a quality picker */ },
                     selected = true,
@@ -570,9 +571,12 @@ private fun TransportBar(
                 }
             }
         }
-        Spacer(modifier = Modifier.weight(1f))
-        // Center: repeat, prev, PLAY (large green), next, heart.
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Center group anchored to Center.
+        Row(
+            modifier = Modifier.align(Alignment.Center),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             val repeatIcon = if (state.repeatMode == RepeatMode.ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat
             IconPill(repeatIcon, active = state.repeatMode != RepeatMode.OFF, onClick = onCycleRepeat)
             IconPill(Icons.Filled.SkipPrevious, onClick = onPrev)
@@ -589,9 +593,12 @@ private fun TransportBar(
                 onClick = onToggleFav,
             )
         }
-        Spacer(modifier = Modifier.weight(1f))
-        // Right: MV pill + playlist hamburger.
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Right group anchored to CenterEnd.
+        Row(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             TvPill(
                 onClick = onMv,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),

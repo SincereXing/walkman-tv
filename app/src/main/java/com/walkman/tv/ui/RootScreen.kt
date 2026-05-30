@@ -106,6 +106,14 @@ fun RootScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxSize().background(AppColors.BgDeep),
             )
         }
+        // Broadcast 'player overlay closed' so the underlying TrackList can restore focus
+        // on the row that opened it. DisposableEffect runs onDispose when PlayerScreen leaves
+        // the composition (showPlayer flipping false), which is exactly the moment we want.
+        if (showPlayer) {
+            androidx.compose.runtime.DisposableEffect(Unit) {
+                onDispose { appContainer.events.postPlayerClosed() }
+            }
+        }
 
         if (showExitDialog) {
             ExitConfirmDialog(

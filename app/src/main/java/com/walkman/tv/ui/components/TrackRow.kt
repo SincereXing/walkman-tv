@@ -179,6 +179,11 @@ fun TrackList(
 ) {
     val listState = rememberLazyListState()
     val firstFocus = remember { FocusRequester() }
+    // Holds a FocusRequester for the row most recently clicked-to-play. When the player
+    // overlay closes we re-request focus on this row so the user returns to the same line
+    // they launched playback from.
+    val lastClickedFocus = remember { FocusRequester() }
+    var lastClickedIndex by remember { androidx.compose.runtime.mutableStateOf(-1) }
     val scope = rememberCoroutineScope()
     val atTop by remember {
         derivedStateOf {
@@ -203,6 +208,20 @@ fun TrackList(
         }
     }
 
+    // Restore focus to the most-recently clicked row when the player overlay closes.
+    LaunchedEffect(Unit) {
+        com.walkman.tv.ui.appContainer.events.playerClosed.collect {
+            if (lastClickedIndex >= 0) {
+                // Scroll it into view, wait for compose, then request focus.
+                runCatching { listState.animateScrollToItem(lastClickedIndex.coerceAtMost(tracks.size - 1)) }
+                repeat(5) {
+                    delay(60)
+                    if (runCatching { lastClickedFocus.requestFocus() }.isSuccess) return@collect
+                }
+            }
+        }
+    }
+
     LazyColumn(
         state = listState,
         // focusRestorer() remembers which row was last focused; when the player overlay closes
@@ -212,12 +231,25 @@ fun TrackList(
         contentPadding = contentPadding,
     ) {
         itemsIndexed(tracks, key = { _, t -> t.id }) { index, track ->
+            // Two FocusRequesters can collide on the same row (row 0 == lastClicked). Compose
+            // doesn't error, but the later-applied one wins; layering them with .then() makes
+            // the priority explicit (lastClicked > firstFocus).
+            val rowModifier = when {
+                index == lastClickedIndex && index == 0 ->
+                    Modifier.focusRequester(lastClickedFocus).focusRequester(firstFocus)
+                index == lastClickedIndex -> Modifier.focusRequester(lastClickedFocus)
+                index == 0 -> Modifier.focusRequester(firstFocus)
+                else -> Modifier
+            }
             TrackRow(
                 track = track,
                 index = index,
-                modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                modifier = rowModifier,
                 nowPlaying = track.id == nowPlayingId,
-                onClick = { onPlay(index) },
+                onClick = {
+                    lastClickedIndex = index
+                    onPlay(index)
+                },
             )
         }
     }
