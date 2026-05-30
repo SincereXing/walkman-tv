@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -159,6 +160,8 @@ private fun MvBadge() {
  * A focusable list of tracks. Back-key behavior: when the list has been scrolled away from
  * the top, the first press scrolls back to row 0 and refocuses it; only when already at the
  * top does back fall through to the parent BackHandler (which navigates out one layer).
+ * If [initialFocus] is true the list grabs focus on its first row on first composition —
+ * used by overlays (songlist detail) where the list appears on top of something focused.
  */
 @Composable
 fun TrackList(
@@ -166,6 +169,7 @@ fun TrackList(
     modifier: Modifier = Modifier,
     nowPlayingId: String? = null,
     contentPadding: PaddingValues = PaddingValues(vertical = 8.dp),
+    initialFocus: Boolean = false,
     onPlay: (index: Int) -> Unit,
 ) {
     val listState = rememberLazyListState()
@@ -181,6 +185,14 @@ fun TrackList(
         scope.launch {
             listState.animateScrollToItem(0)
             // Wait a frame so item 0 is composed/visible before requesting focus.
+            delay(80)
+            runCatching { firstFocus.requestFocus() }
+        }
+    }
+
+    if (initialFocus) {
+        LaunchedEffect(tracks.firstOrNull()?.id) {
+            // Wait for item 0 to compose before requesting focus.
             delay(80)
             runCatching { firstFocus.requestFocus() }
         }

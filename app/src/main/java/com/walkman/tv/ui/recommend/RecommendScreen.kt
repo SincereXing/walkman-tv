@@ -88,11 +88,15 @@ private fun NowPlayingPanel(onOpenPlayer: () -> Unit, modifier: Modifier = Modif
             Text("暂无播放，去推荐里点歌开始吧", color = AppColors.TextSecondary, fontSize = 14.sp)
         }
         // Two-line waveform between the lyric and the transport controls.
-        Spacer(Modifier.height(10.dp))
-        MiniLineWaveform(
-            isPlaying = state.isPlaying,
-            modifier = Modifier.fillMaxWidth().height(24.dp),
-        )
+        // Only shown when a track is loaded, and constrained to the cover's width so it
+        // doesn't extend past the left/right edges of the disc.
+        if (track != null) {
+            Spacer(Modifier.height(10.dp))
+            MiniLineWaveform(
+                isPlaying = state.isPlaying,
+                modifier = Modifier.width(240.dp).height(24.dp),
+            )
+        }
         Spacer(Modifier.height(10.dp))
         // Controls centered.
         Row(

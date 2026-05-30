@@ -274,7 +274,7 @@ private fun VinylDisc(picURL: String?, isPlaying: Boolean) {
     }
     val circle = androidx.compose.foundation.shape.CircleShape
     Box(modifier = Modifier.size(360.dp), contentAlignment = Alignment.Center) {
-        // 1) Outer green halo (decorative glow).
+        // 1) Outer green halo (decorative glow, doesn't rotate).
         Box(
             modifier = Modifier
                 .size(360.dp)
@@ -289,34 +289,90 @@ private fun VinylDisc(picURL: String?, isPlaying: Boolean) {
                     ),
                 ),
         )
-        // 2) Vinyl ring (dark green band that surrounds the album art).
+        // 2) The whole record — grooves + album art rotate together. graphicsLayer applies the
+        // transform at the draw phase so the Canvas + AsyncImage don't recompose per frame.
         Box(
             modifier = Modifier
                 .size(300.dp)
-                .clip(circle)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFF0F2A18),
-                            Color(0xFF143A22),
-                            AppColors.AccentGreen.copy(alpha = 0.6f),
-                        ),
-                    ),
-                ),
-        )
-        // 3) Album art — rotated via graphicsLayer so the transform happens at the draw phase
-        // (no recomposition of the underlying AsyncImage every frame; massive perf win on TV).
-        Box(
-            modifier = Modifier
-                .size(230.dp)
-                .graphicsLayer { rotationZ = rotation.value }
-                .clip(circle)
-                .background(AppColors.BgDeep),
+                .graphicsLayer { rotationZ = rotation.value },
+            contentAlignment = Alignment.Center,
         ) {
-            Artwork(picURL, modifier = Modifier.fillMaxSize(), shape = circle)
+            VinylGrooves(modifier = Modifier.size(300.dp))
+            // Album art clipped to circle, sits flush with the inner groove edge (≈230dp).
+            Box(
+                modifier = Modifier
+                    .size(220.dp)
+                    .clip(circle)
+                    .background(AppColors.BgDeep),
+            ) {
+                Artwork(picURL, modifier = Modifier.fillMaxSize(), shape = circle)
+            }
         }
-        // 4) Center spindle hole.
+        // 3) Center spindle hole (doesn't rotate — stays sharp).
         Box(modifier = Modifier.size(14.dp).clip(circle).background(Color.Black))
+    }
+}
+
+/** Vinyl groove texture: dark green base, radial depth gradient, concentric groove rings,
+ *  bright outer rim. Drawn once into a Canvas (then rotated by the parent graphicsLayer). */
+@Composable
+private fun VinylGrooves(modifier: Modifier) {
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+        val outerRadius = size.minDimension / 2f
+        // The grooves sit between the album-art edge (~110dp radius) and the outer rim.
+        val innerRadius = 110.dp.toPx()
+
+        // Base dark green disc.
+        drawCircle(color = Color(0xFF0E2818), radius = outerRadius, center = center)
+
+        // Subtle radial gradient for depth (centre slightly darker than the rim).
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFF0A1F12),
+                    Color(0xFF112F1C),
+                    Color(0xFF1B4528),
+                ),
+                center = center,
+                radius = outerRadius,
+            ),
+            radius = outerRadius,
+            center = center,
+        )
+
+        // Concentric groove lines (uneven alpha for a real-record look).
+        val grooveCount = 32
+        for (i in 0 until grooveCount) {
+            val frac = i / (grooveCount - 1).toFloat()
+            val r = innerRadius + (outerRadius - innerRadius) * frac
+            // Vary thickness and alpha so the grooves don't look mechanical.
+            val alpha = 0.20f + 0.10f * ((i % 5) / 5f)
+            val w = if (i % 7 == 0) 1.2.dp.toPx() else 0.6.dp.toPx()
+            drawCircle(
+                color = Color.Black.copy(alpha = alpha),
+                radius = r,
+                center = center,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = w),
+            )
+        }
+
+        // A subtle highlight ring just outside the album art so the cover doesn't bleed
+        // into the grooves visually.
+        drawCircle(
+            color = AppColors.AccentGreen.copy(alpha = 0.45f),
+            radius = innerRadius + 2.dp.toPx(),
+            center = center,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx()),
+        )
+
+        // Bright outer rim so the disc edge reads against the green halo.
+        drawCircle(
+            color = AppColors.AccentGreen.copy(alpha = 0.55f),
+            radius = outerRadius - 1.dp.toPx(),
+            center = center,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()),
+        )
     }
 }
 

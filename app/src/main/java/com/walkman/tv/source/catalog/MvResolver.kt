@@ -50,7 +50,10 @@ class MvResolver(private val http: CatalogHttp) {
         }.getOrDefault(info)
     }
 
-    // Kuwo: convert_url MV (mvId frequently equals the song rid).
+    // Kuwo: convert_url MV (mvId frequently equals the song rid). If the request lacks
+    // app-side auth Kuwo returns a DRM placeholder *audio* mp3 file (e.g. 588957081.mp3)
+    // whose content is the recording "this song only plays on Kuwo mobile" — we have to
+    // reject those, otherwise the user clicks MV and hears the placeholder instead.
     private suspend fun kuwo(track: Track): MusicVideoInfo? {
         val mvId = track.extras["mvId"]?.takeIf { it.isNotEmpty() && it != "0" } ?: track.songmid
         val url = runCatching {
@@ -60,10 +63,24 @@ class MvResolver(private val http: CatalogHttp) {
             ).trim()
         }.getOrNull()
         if (url == null || !url.startsWith("http")) return null
+        if (isKuwoMvPlaceholder(url)) return null
         return MusicVideoInfo(
             id = mvId, name = track.name, url = url,
             pageUrl = "http://www.kuwo.cn/mvplay/$mvId",
             qualities = listOf(MvQuality("mp4", url)),
         )
+    }
+
+    /** A real MV is mp4; the DRM placeholder is an mp3. Catch the known placeholder filenames
+     *  and also any *.mp3 returned by the MV endpoint (it should never be mp3 for a real MV). */
+    private fun isKuwoMvPlaceholder(url: String): Boolean {
+        val tail = url.substringAfterLast('/').substringBefore('?').lowercase()
+        if (tail in KUWO_PLACEHOLDER_FILES) return true
+        if (tail.endsWith(".mp3")) return true
+        return false
+    }
+
+    private companion object {
+        val KUWO_PLACEHOLDER_FILES = setOf("588957081.mp3", "588957081.mp4")
     }
 }

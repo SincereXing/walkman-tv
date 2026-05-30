@@ -135,7 +135,12 @@ fun SonglistScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
             ) {
                 Text(info.name, color = AppColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 val nowId = appContainer.playbackController.state.collectAsState().value.currentTrack?.id
-                TrackList(tracks, modifier = Modifier.fillMaxWidth().weight(1f), nowPlayingId = nowId) { idx ->
+                TrackList(
+                    tracks,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    nowPlayingId = nowId,
+                    initialFocus = true,
+                ) { idx ->
                     playList(tracks, idx); onOpenPlayer()
                 }
             }
