@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Coral gradient matching the iOS walkman icon: orange (#FF9059) top-left
+     → magenta (#E03B6E) bottom-right. Visible only where the foreground PNG is
+     transparent (outside the 86% inset), so it appears as a soft halo behind the
+     icon once the launcher applies its circle/squircle/rounded-square mask. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:type="linear"
+        android:angle="315"
+        android:startColor="#FF9059"
+        android:centerColor="#F26565"
+        android:endColor="#E03B6E"/>
+</shape>
