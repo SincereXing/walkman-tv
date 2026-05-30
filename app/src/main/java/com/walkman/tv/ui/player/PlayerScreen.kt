@@ -503,7 +503,7 @@ private data class WaveLayer(
 private val waveLayers = listOf(
     // Front line: brighter / thicker, biased slightly left of centre.
     WaveLayer(
-        amp = 0.85f,
+        amp = 1.05f,
         k1 = 0.034f, k2 = 0.061f, k3 = 0.083f,
         d1 = 1.30f, d2 = -0.85f, d3 = 0.55f,
         w1 = 0.50f, w2 = 0.32f, w3 = 0.18f,
@@ -512,7 +512,7 @@ private val waveLayers = listOf(
     ),
     // Back line: softer / faster phase drift, biased slightly right of centre.
     WaveLayer(
-        amp = 0.62f,
+        amp = 0.82f,
         k1 = 0.041f, k2 = 0.073f, k3 = 0.107f,
         d1 = -1.05f, d2 = 1.45f, d3 = -0.72f,
         w1 = 0.45f, w2 = 0.35f, w3 = 0.20f,
@@ -545,11 +545,18 @@ private fun Waveform(isPlaying: Boolean, modifier: Modifier = Modifier) {
         val width = size.width.toDouble()
         for (w in waveLayers) {
             // Amplitude breath — 2 incommensurate sines summed for a "music-like" rise/fall.
+            // Floor at 0.28 (not 0.10) so the wave never collapses near-flat between beats —
+            // the bigger swings need a livelier baseline to avoid feeling staccato.
             val beat = 0.5 +
                 0.38 * sin(t * w.pulse + w.pPhase) +
                 0.22 * sin(t * w.pulse * 1.9 + w.pPhase * 1.7)
-            val pulse = maxOf(0.10, beat)
-            val ampPx = minOf(w.amp * pulse, 0.92) * size.height / 2.0
+            val pulse = maxOf(0.28, beat)
+            // Available half-height — leave a stroke-radius gap at top and bottom so the
+            // painted line doesn't bleed past the canvas. Cap the fraction at 0.97 (not 1.0)
+            // for a touch of extra safety against any single-pixel rounding overshoot.
+            val strokeHalfPx = w.widthDp.dp.toPx() / 2.0
+            val halfH = (size.height / 2.0 - strokeHalfPx).coerceAtLeast(1.0)
+            val ampPx = minOf(w.amp * pulse, 0.97) * halfH
             val wSum = (w.w1 + w.w2 + w.w3).toDouble()
             val ph1 = t * w.d1
             val ph2 = t * w.d2 + 1.3
