@@ -13,6 +13,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,6 +58,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -204,7 +211,7 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth().height(40.dp),
             )
             Spacer(Modifier.height(6.dp))
-            ProgressBar(state.positionMs, state.durationMs)
+            ProgressBar(state.positionMs, state.durationMs, onSeek = { controller.seekTo(it) })
             Spacer(Modifier.height(14.dp))
             TransportBar(
                 state = state,
@@ -611,14 +618,57 @@ private fun TransportBar(
 }
 
 @Composable
-private fun ProgressBar(positionMs: Long, durationMs: Long) {
+/**
+ * D-pad-seekable progress bar. When focused (D-pad up from the play button), left/right step
+ * the position by 5 seconds. Visual focus cue: bar thickens (3 -> 6dp) and the elapsed-time
+ * label turns green. Long-press auto-repeat is handled by the OS (held D-pad emits repeats).
+ */
+private const val SEEK_STEP_MS = 5_000L
+
+@Composable
+private fun ProgressBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) {
     val fraction = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
-    Column {
-        Box(modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(AppColors.Card)) {
-            Box(modifier = Modifier.fillMaxWidth(fraction).fillMaxHeight().background(AppColors.AccentGreen))
+    var focused by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { evt ->
+                if (evt.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                if (durationMs <= 0) return@onPreviewKeyEvent false
+                when (evt.key) {
+                    Key.DirectionLeft -> {
+                        onSeek((positionMs - SEEK_STEP_MS).coerceAtLeast(0L)); true
+                    }
+                    Key.DirectionRight -> {
+                        onSeek((positionMs + SEEK_STEP_MS).coerceAtMost(durationMs)); true
+                    }
+                    else -> false
+                }
+            }
+            .focusable(),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (focused) 6.dp else 3.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(if (focused) AppColors.Card.copy(alpha = 0.9f) else AppColors.Card),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .fillMaxHeight()
+                    .background(AppColors.AccentGreen),
+            )
         }
         Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(fmt(positionMs), color = AppColors.TextMuted, fontSize = 11.sp)
+            Text(
+                fmt(positionMs),
+                color = if (focused) AppColors.AccentGreen else AppColors.TextMuted,
+                fontSize = 11.sp,
+                fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal,
+            )
             Text(fmt(durationMs), color = AppColors.TextMuted, fontSize = 11.sp)
         }
     }
