@@ -1,6 +1,5 @@
 package com.walkman.tv.ui.recommend
 
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -91,9 +90,12 @@ private fun NowPlayingPanel(onOpenPlayer: () -> Unit, modifier: Modifier = Modif
         // controls. All constrained to the cover's width (240dp). Hidden entirely when no track.
         if (track != null) {
             Spacer(Modifier.height(10.dp))
-            MiniLineWaveform(
+            // Shared with the full-screen player so both surfaces animate identically.
+            // Slightly taller (28dp) than the line height so the 1.6dp stroke and the
+            // ~0.97 amplitude cap have room without clipping at the 240dp width.
+            com.walkman.tv.ui.components.Waveform(
                 isPlaying = state.isPlaying,
-                modifier = Modifier.width(240.dp).height(24.dp),
+                modifier = Modifier.width(240.dp).height(28.dp),
             )
             Spacer(Modifier.height(6.dp))
             MiniProgressBar(
@@ -151,60 +153,6 @@ private fun MiniProgressBar(positionMs: Long, durationMs: Long, modifier: Modifi
 private fun fmtMillis(ms: Long): String {
     val s = (ms / 1000).toInt().coerceAtLeast(0)
     return "%02d:%02d".format(s / 60, s % 60)
-}
-
-/** Two flowing sine wave lines, ~24dp tall, for the recommend NowPlaying panel. */
-@Composable
-private fun MiniLineWaveform(isPlaying: Boolean, modifier: Modifier = Modifier) {
-    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "rec-wave")
-    val time by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1000f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = androidx.compose.animation.core.tween(durationMillis = 1_000_000, easing = androidx.compose.animation.core.LinearEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Restart,
-        ),
-        label = "rec-wave-time",
-    )
-    androidx.compose.foundation.Canvas(modifier = modifier) {
-        val t = if (isPlaying) time.toDouble() else 0.0
-        val midY = size.height / 2.0
-        val W = size.width.toDouble()
-        // Two layers tuned smaller than the player.
-        val layers = listOf(
-            Triple(0.80f, 110.0, 0.85f) to Pair(0.8f, 1.4f),  // (amp, wavelength, opacity) and (drift, lineWidthDp)
-            Triple(0.50f, 75.0, 0.45f) to Pair(1.3f, 1.0f),
-        )
-        for ((spec, mods) in layers) {
-            val (amp, wl, opacity) = spec
-            val (drift, widthDp) = mods
-            val phase = t * drift * 2.2
-            val pulseBeat = 0.5 + 0.35 * kotlin.math.sin(t * 3.0)
-            val ampPx = (amp * maxOf(0.2, pulseBeat)) * size.height / 2.0
-            val path = androidx.compose.ui.graphics.Path()
-            fun yAt(xx: Double): Float {
-                val env = kotlin.math.sin(xx / W * Math.PI)
-                return (midY + kotlin.math.sin(xx / wl * 2 * Math.PI + phase) * ampPx * env).toFloat()
-            }
-            path.moveTo(0f, yAt(0.0))
-            var x = 0.0
-            while (x <= W) {
-                path.lineTo(x.toFloat(), yAt(x))
-                x += 2.0
-            }
-            drawPath(
-                path = path,
-                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                    colorStops = arrayOf(
-                        0f to AppColors.AccentGreen.copy(alpha = 0f),
-                        0.5f to AppColors.AccentGreen.copy(alpha = opacity),
-                        1f to AppColors.AccentGreen.copy(alpha = 0f),
-                    ),
-                ),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = widthDp.dp.toPx()),
-            )
-        }
-    }
 }
 
 @Composable

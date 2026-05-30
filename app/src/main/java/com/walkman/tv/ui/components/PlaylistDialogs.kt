@@ -152,7 +152,11 @@ fun PlaylistPickerDialog(track: Track, onDismiss: () -> Unit) {
                 }
             }
             Spacer(Modifier.size(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // All actions hug the right edge so the dialog footer is consistent across the app.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
                 TvPill(
                     onClick = { showCreate = true },
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
@@ -163,7 +167,6 @@ fun PlaylistPickerDialog(track: Track, onDismiss: () -> Unit) {
                         Text("新建歌单", fontSize = 13.sp)
                     }
                 }
-                Spacer(Modifier.weight(1f))
                 TvPill(
                     onClick = onDismiss,
                     selected = true,
@@ -289,14 +292,16 @@ fun PlaylistNameDialog(
             )
 
             Spacer(Modifier.size(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
                 TvPill(
                     onClick = { showQr = true },
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 ) {
                     Text("手机扫码输入", fontSize = 13.sp)
                 }
-                Spacer(Modifier.weight(1f))
                 TvPill(
                     onClick = onDismiss,
                     contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),

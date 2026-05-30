@@ -165,12 +165,12 @@ private fun ExitConfirmDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
                 fontSize = 14.sp,
             )
             Spacer(Modifier.height(22.dp))
-            // SpaceBetween pushes 取消 to the left edge and 确定 to the right edge of the dialog
-            // (which is ~360-2*24 = 312dp wide internally) — feels less 'cluster-on-OK'-y than
-            // the previous centred pair, and the visual distance reduces accidental confirms.
+            // Both buttons right-aligned, 取消 immediately to the left of 确定 with a small gap.
+            // Standard TV dialog footer pattern: actions hug the trailing edge so D-pad Right
+            // from anywhere in the dialog body lands on the action row predictably.
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
             ) {
                 TvPill(
                     onClick = onCancel,
