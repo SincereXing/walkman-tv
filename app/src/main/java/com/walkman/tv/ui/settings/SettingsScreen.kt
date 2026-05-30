@@ -156,7 +156,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             QrDialog(
                 url = "http://$ip:$port/script",
                 title = "扫码导入音源",
-                subtitle = "手机扫码后可粘贴脚本 URL 或上传 .js 文件，电视会自动加载",
+                subtitle = "手机扫码、电脑打开地址都可以，可粘贴脚本 URL 或上传 .js 文件",
                 onDismiss = { showQr = false },
             )
         } else {

@@ -84,13 +84,27 @@ fun QrDialog(
                         Text("无法生成二维码", color = AppColors.TextMuted)
                     }
                 }
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(16.dp))
                 Text(
-                    url,
-                    color = AppColors.AccentGreen,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    "或在电脑 / 手机浏览器中打开下方地址：",
+                    color = AppColors.TextMuted,
+                    fontSize = 12.sp,
                 )
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(AppColors.BgDeep)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Text(
+                        url,
+                        color = AppColors.AccentGreen,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
                 Spacer(Modifier.height(16.dp))
                 TvPill(
                     onClick = onDismiss,

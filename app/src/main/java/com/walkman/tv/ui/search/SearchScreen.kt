@@ -159,7 +159,7 @@ fun SearchScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
             QrDialog(
                 url = "http://$ip:$port/search",
                 title = "扫码搜索",
-                subtitle = "用手机浏览器扫码，输入关键词后会自动回到电视搜索",
+                subtitle = "手机扫码、电脑直接打开地址都可以，输入关键词后会自动回到电视搜索",
                 onDismiss = { showQr = false },
             )
         } else {
