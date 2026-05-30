@@ -2,6 +2,7 @@ package com.walkman.tv.di
 
 import android.content.Context
 import com.walkman.tv.data.store.LibraryStore
+import com.walkman.tv.data.store.PlaybackSnapshotStore
 import com.walkman.tv.data.store.ScriptStore
 import com.walkman.tv.data.store.SettingsStore
 import com.walkman.tv.playback.LyricsFetcher
@@ -9,7 +10,9 @@ import com.walkman.tv.playback.PlaybackController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import com.walkman.tv.source.OtherSourceFinder
@@ -77,6 +80,7 @@ class AppContainer(val appContext: Context) {
     val scriptStore: ScriptStore by lazy { ScriptStore(appContext, sourceManager) }
     val libraryStore: LibraryStore by lazy { LibraryStore(appContext) }
     val settingsStore: SettingsStore by lazy { SettingsStore(appContext) }
+    val playbackSnapshotStore: PlaybackSnapshotStore by lazy { PlaybackSnapshotStore(appContext) }
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -113,6 +117,27 @@ class AppContainer(val appContext: Context) {
                 sourceManager.fallbackEnabled = s.fallbackEnabled
             }.launchIn(appScope)
             scriptStore.loadAll()
+
+            // Restore last session's queue + index + playing state. Run after scripts load so
+            // any custom-source needed to resolve URLs is ready.
+            val snapshot = playbackSnapshotStore.load()
+            playbackController.restoreSnapshot(snapshot)
+
+            // Auto-save the snapshot whenever queue/index/isPlaying changes. distinctUntilChanged
+            // already coalesces the high-frequency position ticks since we only project the three
+            // fields that matter here.
+            playbackController.state
+                .map { Triple(it.queue.map { t -> t.id }, it.index, it.isPlaying) }
+                .distinctUntilChanged()
+                .onEach { playbackSnapshotStore.save(playbackController.snapshot()) }
+                .launchIn(appScope)
+        }
+    }
+
+    /** Synchronous final save — called right before the process is killed on user-confirmed exit. */
+    fun saveSnapshotNow() {
+        if (::playbackController.isInitialized) {
+            runCatching { playbackSnapshotStore.saveBlocking(playbackController.snapshot()) }
         }
     }
 }

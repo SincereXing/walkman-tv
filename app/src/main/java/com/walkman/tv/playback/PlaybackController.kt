@@ -9,7 +9,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import com.walkman.tv.data.store.PlaybackSnapshot
 import com.walkman.tv.data.model.Quality
 import com.walkman.tv.data.model.Track
 import com.walkman.tv.source.ResolvedTrack
@@ -55,18 +58,54 @@ class PlaybackController(
     private val sources: SourceManager,
     private val lyricsFetcher: LyricsFetcher,
 ) {
-    val player: ExoPlayer = ExoPlayer.Builder(context.applicationContext)
-        .setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                .build(),
-            true,
-        )
-        .setHandleAudioBecomingNoisy(true)
-        .build()
+    val player: ExoPlayer = buildPlayer(context.applicationContext)
 
     private val appContext = context.applicationContext
+
+    private companion object {
+        /**
+         * Build the ExoPlayer with settings tuned for music playback on Android TV:
+         *
+         * - Larger LoadControl buffers (60s max / 30s min target) so a Hi-Res FLAC at
+         *   ~10 Mbps doesn't constantly underrun on slower connections; the start
+         *   threshold (3s) keeps perceived play latency low.
+         * - DefaultAudioSink with audio offload enabled — on Android 10+ the OS will
+         *   route bit-perfect PCM/FLAC to dedicated DSP/HDMI passthrough when the
+         *   downstream device can decode it, preserving 24-bit / 96-192 kHz tracks
+         *   without resampling.
+         * - DefaultRenderersFactory in PREFER_EXTENSION mode so the bundled FLAC /
+         *   OPUS / VORBIS extension renderers (when present) win over the slower
+         *   MediaCodec path.
+         */
+        fun buildPlayer(appContext: android.content.Context): ExoPlayer {
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    /* minBufferMs = */ 30_000,
+                    /* maxBufferMs = */ 60_000,
+                    /* bufferForPlaybackMs = */ 3_000,
+                    /* bufferForPlaybackAfterRebufferMs = */ 5_000,
+                )
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build()
+
+            val renderersFactory = DefaultRenderersFactory(appContext)
+                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+                .setEnableAudioFloatOutput(true)
+                .setEnableAudioTrackPlaybackParams(true)
+                .setEnableAudioOffload(true)
+
+            val audioAttrs = AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .build()
+
+            return ExoPlayer.Builder(appContext, renderersFactory)
+                .setLoadControl(loadControl)
+                .setAudioAttributes(audioAttrs, /* handleAudioFocus = */ true)
+                .setHandleAudioBecomingNoisy(true)
+                .build()
+        }
+    }
     private var serviceStarted = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -111,6 +150,25 @@ class PlaybackController(
         if (tracks.isEmpty()) return
         _state.value = _state.value.copy(queue = tracks, index = startIndex.coerceIn(0, tracks.size - 1))
         if (autoPlay) playAt(_state.value.index)
+    }
+
+    /** Capture the parts of state we persist across launches. */
+    fun snapshot(): PlaybackSnapshot {
+        val s = _state.value
+        return PlaybackSnapshot(
+            queue = s.queue,
+            currentIndex = s.index,
+            wasPlaying = s.isPlaying,
+        )
+    }
+
+    /** Restore queue + index from a snapshot. Resumes playback if the previous session was
+     *  playing; URLs are resolved fresh (they expire). Called once from AppContainer.bootstrap. */
+    fun restoreSnapshot(s: PlaybackSnapshot) {
+        if (s.queue.isEmpty() || s.currentIndex !in s.queue.indices) return
+        // Stage the queue without auto-play first, so the UI shows the track immediately.
+        _state.value = _state.value.copy(queue = s.queue, index = s.currentIndex, isPlaying = false)
+        if (s.wasPlaying) playAt(s.currentIndex)
     }
 
     fun playTrack(track: Track) = setQueue(listOf(track), 0, true)

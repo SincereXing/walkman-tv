@@ -1,5 +1,8 @@
 package com.walkman.tv.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -18,12 +21,15 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,6 +54,8 @@ fun TopNav(
     modifier: Modifier = Modifier,
     recommendFocusRequester: FocusRequester? = null,
     nowPlayingTitle: String? = null,
+    nowPlayingPicURL: String? = null,
+    nowPlayingIsPlaying: Boolean = false,
     onOpenPlayer: () -> Unit = {},
 ) {
     Box(modifier = modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp)) {
@@ -76,6 +84,8 @@ fun TopNav(
         if (!nowPlayingTitle.isNullOrEmpty()) {
             NowPlayingChip(
                 title = nowPlayingTitle,
+                picURL = nowPlayingPicURL,
+                isPlaying = nowPlayingIsPlaying,
                 onClick = onOpenPlayer,
                 modifier = Modifier.align(Alignment.CenterEnd),
             )
@@ -177,14 +187,59 @@ private fun NavItemIconOnly(
 }
 
 @Composable
-private fun NowPlayingChip(title: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun NowPlayingChip(
+    title: String,
+    picURL: String?,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Mini vinyl: rotates when playing, freezes when paused. graphicsLayer makes the rotation a
+    // draw-phase transform so AsyncImage isn't recomposed every animation frame.
+    val rotation = remember { Animatable(0f) }
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            while (true) {
+                rotation.animateTo(
+                    rotation.value + 360f,
+                    animationSpec = tween(durationMillis = 6000, easing = LinearEasing),
+                )
+            }
+        }
+    }
     TvPill(
         onClick = onClick,
         modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(AppColors.AccentGreen))
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(AppColors.AccentGreen.copy(alpha = 0.25f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .graphicsLayer { rotationZ = rotation.value }
+                        .clip(CircleShape),
+                ) {
+                    com.walkman.tv.ui.components.Artwork(
+                        picURL,
+                        modifier = Modifier.size(14.dp),
+                        shape = CircleShape,
+                    )
+                }
+                // Tiny spindle hole.
+                Box(
+                    modifier = Modifier
+                        .size(3.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black),
+                )
+            }
             Spacer(Modifier.width(7.dp))
             Text(
                 text = title,

@@ -54,13 +54,14 @@ fun RootScreen(modifier: Modifier = Modifier) {
     val recommendFocus = remember { FocusRequester() }
     val context = LocalContext.current
 
-    // Subscribe only to the now-playing title (via distinctUntilChanged) — without this, the
-    // 500/1000ms position ticker would recompose the entire root and TopNav twice a second.
-    val nowPlayingTitle by remember {
+    // Subscribe only to the bits the TopNav cares about — without distinctUntilChanged the 1Hz
+    // position ticker would recompose the whole root and TopNav once per second.
+    data class NavPlaybackBits(val title: String?, val picURL: String?, val isPlaying: Boolean)
+    val navBits by remember {
         appContainer.playbackController.state
-            .map { it.currentTrack?.name }
+            .map { NavPlaybackBits(it.currentTrack?.name, it.currentTrack?.picURL, it.isPlaying) }
             .distinctUntilChanged()
-    }.collectAsState(initial = null)
+    }.collectAsState(initial = NavPlaybackBits(null, null, false))
 
     LaunchedEffect(Unit) { runCatching { recommendFocus.requestFocus() } }
 
@@ -81,7 +82,9 @@ fun RootScreen(modifier: Modifier = Modifier) {
                 active = section,
                 onSelect = { section = it },
                 recommendFocusRequester = recommendFocus,
-                nowPlayingTitle = nowPlayingTitle,
+                nowPlayingTitle = navBits.title,
+                nowPlayingPicURL = navBits.picURL,
+                nowPlayingIsPlaying = navBits.isPlaying,
                 onOpenPlayer = { showPlayer = true },
             )
             Box(modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
@@ -110,6 +113,9 @@ fun RootScreen(modifier: Modifier = Modifier) {
                 onConfirm = {
                     // Cleanly shut down before the process dies, otherwise ExoPlayer keeps
                     // the audio focus / surfaces and we hear playback after Activity.finish.
+                    // Snapshot the playback state to disk *before* killing the process so the
+                    // next launch can pick up where we left off.
+                    runCatching { appContainer.saveSnapshotNow() }
                     runCatching { appContainer.playbackController.stop() }
                     runCatching { appContainer.playbackController.release() }
                     (context as? Activity)?.finishAndRemoveTask()
