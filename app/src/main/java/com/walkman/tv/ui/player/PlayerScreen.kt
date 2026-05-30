@@ -94,17 +94,21 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     val lyrics by controller.lyrics.collectAsState()
     val love by appContainer.libraryStore.love.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var showMvQueue by remember { mutableStateOf(false) }
     val playFocus = remember { FocusRequester() }
 
     val track = state.currentTrack
 
-    // When the player opens (track non-null + not in MV mode), park focus on the central play
-    // button. Without this the screen has no visible focus highlight and D-pad has nowhere to go.
-    LaunchedEffect(track?.id, state.isMv) {
-        if (track != null && !state.isMv) {
-            // Wait a frame so the TransportBar has composed.
-            kotlinx.coroutines.delay(50)
+    // Park focus on the central play button:
+    //   - when the player first opens (track first becomes non-null);
+    //   - when MV exits back to audio;
+    //   - when the queue drawer closes (otherwise focus is left on the now-vanished drawer item
+    //     and the screen looks dead to the remote).
+    LaunchedEffect(track?.id, state.isMv, showMvQueue) {
+        if (track != null && !state.isMv && !showMvQueue) {
+            // Wait a frame so the TransportBar has composed / the drawer has finished slide-out.
+            kotlinx.coroutines.delay(80)
             runCatching { playFocus.requestFocus() }
         }
     }
@@ -218,12 +222,23 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 },
                 onToggleFav = { scope.launch { appContainer.libraryStore.toggleFavorite(track) } },
                 onMv = {
+                    // Toast lets the user see the click registered and surfaces both success and
+                    // failure: silent no-op was indistinguishable from a broken button.
+                    android.widget.Toast.makeText(context, "正在获取 MV…", android.widget.Toast.LENGTH_SHORT).show()
                     scope.launch {
                         val info = runCatching { appContainer.mvResolver.getMvUrl(track) }.getOrNull()
-                        info?.bestUrl()?.let { controller.playMvUrl(it) }
+                        val url = info?.bestUrl()
+                        if (url != null) {
+                            controller.playMvUrl(url)
+                        } else {
+                            android.widget.Toast.makeText(context, "暂无可用 MV", android.widget.Toast.LENGTH_SHORT).show()
+                        }
                     }
                 },
                 onShowQueue = { showMvQueue = true },
+                onTuneClick = {
+                    android.widget.Toast.makeText(context, "高级设置即将上线", android.widget.Toast.LENGTH_SHORT).show()
+                },
                 playFocusRequester = playFocus,
             )
         }
@@ -391,6 +406,7 @@ private fun TransportBar(
     onToggleFav: () -> Unit,
     onMv: () -> Unit,
     onShowQueue: () -> Unit,
+    onTuneClick: () -> Unit,
     playFocusRequester: FocusRequester? = null,
 ) {
     val track = state.currentTrack
@@ -401,7 +417,7 @@ private fun TransportBar(
     ) {
         // Left: EQ-style icon + Hi-Res pill (mirrors the reference layout).
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            IconPill(Icons.Filled.Tune, onClick = { /* placeholder — settings shortcut later */ })
+            IconPill(Icons.Filled.Tune, onClick = onTuneClick)
             state.quality?.let {
                 // Selected = true gives the AccentGreenDim background + green text + thin green
                 // outline — same passive-active look as the reference 'Hi-Res ▼' pill.
