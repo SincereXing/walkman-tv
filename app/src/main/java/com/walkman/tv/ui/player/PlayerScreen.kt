@@ -617,14 +617,13 @@ private fun TransportBar(
     }
 }
 
-@Composable
+private const val SEEK_STEP_MS = 5_000L
+
 /**
  * D-pad-seekable progress bar. When focused (D-pad up from the play button), left/right step
  * the position by 5 seconds. Visual focus cue: bar thickens (3 -> 6dp) and the elapsed-time
  * label turns green. Long-press auto-repeat is handled by the OS (held D-pad emits repeats).
  */
-private const val SEEK_STEP_MS = 5_000L
-
 @Composable
 private fun ProgressBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) {
     val fraction = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
