@@ -3,12 +3,25 @@ package com.walkman.tv.ui
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.walkman.tv.ui.components.TvPill
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -92,24 +105,71 @@ fun RootScreen(modifier: Modifier = Modifier) {
         }
 
         if (showExitDialog) {
-            AlertDialog(
-                onDismissRequest = { showExitDialog = false },
-                title = { Text("退出应用") },
-                text = { Text("确定要退出随便听吗？") },
-                confirmButton = {
-                    TextButton(onClick = { (context as? Activity)?.finish() }) {
-                        Text("确定", color = AppColors.AccentGreen)
-                    }
+            ExitConfirmDialog(
+                onCancel = { showExitDialog = false },
+                onConfirm = {
+                    // Cleanly shut down before the process dies, otherwise ExoPlayer keeps
+                    // the audio focus / surfaces and we hear playback after Activity.finish.
+                    runCatching { appContainer.playbackController.stop() }
+                    runCatching { appContainer.playbackController.release() }
+                    (context as? Activity)?.finishAndRemoveTask()
+                    android.os.Process.killProcess(android.os.Process.myPid())
                 },
-                dismissButton = {
-                    TextButton(onClick = { showExitDialog = false }) {
-                        Text("取消", color = AppColors.TextSecondary)
-                    }
-                },
-                containerColor = AppColors.BgPanel,
-                titleContentColor = AppColors.TextPrimary,
-                textContentColor = AppColors.TextSecondary,
             )
+        }
+    }
+}
+
+@Composable
+private fun ExitConfirmDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
+    // Initial focus goes to '取消' so an accidental OK doesn't quit the app.
+    val cancelFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { cancelFocus.requestFocus() } }
+
+    Dialog(
+        onDismissRequest = onCancel,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            modifier = Modifier
+                .width(360.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(AppColors.BgPanel)
+                .padding(horizontal = 24.dp, vertical = 22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "退出应用",
+                color = AppColors.TextPrimary,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = "确定要退出随便听吗？",
+                color = AppColors.TextSecondary,
+                fontSize = 14.sp,
+            )
+            Spacer(Modifier.height(22.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            ) {
+                TvPill(
+                    onClick = onCancel,
+                    focusRequester = cancelFocus,
+                    contentPadding = PaddingValues(horizontal = 28.dp, vertical = 10.dp),
+                ) {
+                    Text("取消", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+                TvPill(
+                    onClick = onConfirm,
+                    selected = true, // green-tinted so '确定' reads as the danger option
+                    contentPadding = PaddingValues(horizontal = 28.dp, vertical = 10.dp),
+                ) {
+                    Text("确定", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }

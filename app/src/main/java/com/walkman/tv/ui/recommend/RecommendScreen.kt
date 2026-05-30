@@ -1,5 +1,6 @@
 package com.walkman.tv.ui.recommend
 
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box

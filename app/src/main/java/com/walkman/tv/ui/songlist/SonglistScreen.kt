@@ -46,6 +46,7 @@ import kotlinx.coroutines.launch
 
 private val songlistSources = listOf(SourceID.KW, SourceID.WY, SourceID.KG, SourceID.TX)
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun SonglistScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
