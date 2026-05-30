@@ -9,6 +9,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -88,22 +89,41 @@ class PlaybackController(
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build()
 
+            // Prefer bundled FLAC/OPUS/VORBIS extension renderers over MediaCodec; pipe audio at
+            // float precision so 24-bit sources don't get prematurely truncated to 16-bit PCM.
+            // (Audio offload is opted in via TrackSelectionParameters below — the deprecated
+            //  DefaultRenderersFactory.setEnableAudioOffload was removed in Media3 1.4.)
             val renderersFactory = DefaultRenderersFactory(appContext)
                 .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
                 .setEnableAudioFloatOutput(true)
                 .setEnableAudioTrackPlaybackParams(true)
-                .setEnableAudioOffload(true)
 
             val audioAttrs = AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .build()
 
-            return ExoPlayer.Builder(appContext, renderersFactory)
+            // Use the 1-arg constructor + setRenderersFactory(): the 2-arg Builder(Context,
+            // RenderersFactory) overload is ambiguous with Builder(Context, MediaSource.Factory).
+            val player = ExoPlayer.Builder(appContext)
+                .setRenderersFactory(renderersFactory)
                 .setLoadControl(loadControl)
                 .setAudioAttributes(audioAttrs, /* handleAudioFocus = */ true)
                 .setHandleAudioBecomingNoisy(true)
                 .build()
+
+            // Ask the OS for audio offload when the downstream sink (DSP / HDMI passthrough /
+            // Bluetooth A2DP offload) can decode it directly — preserves bit-perfect PCM/FLAC.
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setAudioOffloadPreferences(
+                    TrackSelectionParameters.AudioOffloadPreferences.Builder()
+                        .setAudioOffloadMode(
+                            TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED,
+                        )
+                        .build(),
+                )
+                .build()
+            return player
         }
     }
     private var serviceStarted = false
