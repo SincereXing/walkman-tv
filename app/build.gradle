@@ -2,6 +2,16 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "org.jetbrains.kotlin.plugin.serialization"
 
+// Release-signing credentials live in `keystore.properties` at repo root. We don't fail the
+// build if the file is missing — release falls back to debug signing so 'assembleRelease' can
+// still run unsigned-ish on a clean checkout. For a real shipping APK, ensure the properties
+// file points at app/release.keystore with the matching alias/password.
+def releaseProps = new Properties()
+def releasePropsFile = rootProject.file("keystore.properties")
+if (releasePropsFile.exists()) {
+    releaseProps.load(new FileInputStream(releasePropsFile))
+}
+
 android {
     namespace "com.walkman.tv"
     compileSdk rootProject.ext.compileSdkVersion
@@ -29,6 +39,16 @@ android {
                 keyPassword 'android'
             }
         }
+        release {
+            def storeFileName = releaseProps['storeFile'] ?: 'release.keystore'
+            def f = file(storeFileName)
+            if (f.exists() && releaseProps['keyAlias']) {
+                storeFile f
+                storePassword releaseProps['storePassword']
+                keyAlias releaseProps['keyAlias']
+                keyPassword releaseProps['keyPassword']
+            }
+        }
     }
 
     buildTypes {
@@ -38,7 +58,10 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
-            signingConfig signingConfigs.debug
+            // Use the release keystore when keystore.properties + release.keystore are present;
+            // otherwise fall back to debug so the build still completes during development.
+            def hasRelease = signingConfigs.release.storeFile != null
+            signingConfig hasRelease ? signingConfigs.release : signingConfigs.debug
         }
     }
 
