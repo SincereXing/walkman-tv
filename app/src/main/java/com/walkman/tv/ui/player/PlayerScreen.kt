@@ -36,7 +36,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.SkipNext
@@ -598,7 +598,7 @@ private fun TransportBar(
             ) {
                 Text("MV", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
-            IconPill(Icons.Filled.QueueMusic, onClick = onShowQueue)
+            IconPill(Icons.AutoMirrored.Filled.QueueMusic, onClick = onShowQueue)
         }
     }
 }

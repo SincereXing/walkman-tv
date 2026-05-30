@@ -17,7 +17,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -35,13 +34,11 @@ import com.walkman.tv.ui.components.TvFocusable
 import com.walkman.tv.ui.components.TvPill
 import com.walkman.tv.ui.playList
 import com.walkman.tv.ui.theme.AppColors
-import kotlinx.coroutines.launch
 
 private val boardSources = listOf(SourceID.KW, SourceID.WY, SourceID.KG, SourceID.TX)
 
 @Composable
 fun LeaderboardScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
-    val scope = rememberCoroutineScope()
     var source by remember { mutableStateOf(SourceID.KW) }
     var boards by remember { mutableStateOf<List<BoardInfo>>(emptyList()) }
     var selected by remember { mutableStateOf<BoardInfo?>(null) }

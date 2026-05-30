@@ -91,17 +91,15 @@ class ScriptHttpClient(private val client: OkHttpClient) {
             }
         }
 
-        var contentType: String? = headerCI(callerHeaders, "Content-Type")
+        val contentType: String? = headerCI(callerHeaders, "Content-Type")
         var body: RequestBody? = null
 
         if (method == "POST" && options.has("form") && options.opt("form") is JSONObject) {
             body = encodeForm(options.getJSONObject("form"))
                 .toRequestBody((contentType ?: "application/x-www-form-urlencoded").toMediaTypeOrNull())
-            if (contentType == null) contentType = "application/x-www-form-urlencoded"
         } else if (method == "POST" && options.has("formData") && options.opt("formData") is JSONObject) {
             body = options.getJSONObject("formData").toString()
                 .toRequestBody((contentType ?: "multipart/form-data").toMediaTypeOrNull())
-            if (contentType == null) contentType = "multipart/form-data"
         } else if (options.has("body") && !options.isNull("body")) {
             val raw = options.get("body")
             val effectiveCt = contentType ?: if (method == "POST") "application/json" else null
@@ -113,7 +111,6 @@ class ScriptHttpClient(private val client: OkHttpClient) {
                 else -> raw.toString()
             }
             body = text.toRequestBody(effectiveCt?.toMediaTypeOrNull())
-            if (contentType == null) contentType = effectiveCt
         }
 
         // Method + body
