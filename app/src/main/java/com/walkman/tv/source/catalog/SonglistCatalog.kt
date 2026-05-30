@@ -29,6 +29,13 @@ class Songlists(private val http: CatalogHttp) {
     )
     fun serviceFor(source: SourceID): SonglistService? = services.firstOrNull { it.source == source }
     fun servicesAll(): List<SonglistService> = services
+
+    /** Search every platform's playlists in parallel; results are concatenated platform-by-platform. */
+    suspend fun searchAll(keyword: String, page: Int = 1): List<SonglistInfo> = coroutineScope {
+        services.map { svc ->
+            async { runCatching { svc.search(keyword, page) }.getOrDefault(emptyList()) }
+        }.awaitAll().flatten()
+    }
 }
 
 private const val UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"

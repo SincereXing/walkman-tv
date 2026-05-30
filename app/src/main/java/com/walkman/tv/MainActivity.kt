@@ -31,14 +31,23 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Forward the remote's Menu button into the Compose tree via [App.container.events].
-     * Needed because the AndroidView-hosted [androidx.media3.ui.PlayerView] in MV mode owns
-     * focus and Compose's onPreviewKeyEvent never sees the event.
+     * Forward the remote's "Menu / Options / 三条横线" button into the Compose tree via
+     * [App.container.events]. Needed because the AndroidView-hosted [androidx.media3.ui.PlayerView]
+     * in MV mode owns focus and Compose's onPreviewKeyEvent never sees the event.
+     *
+     * Several keycodes are accepted because OEM remotes are inconsistent — Sony BRAVIA Z9K maps
+     * its three-line button to KEYCODE_MENU, but other vendors send KEYCODE_TV_CONTENTS_MENU
+     * or KEYCODE_BUTTON_MODE for the same physical key.
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_MENU) {
-            App.container.events.postMenuKey()
-            return true
+        when (keyCode) {
+            KeyEvent.KEYCODE_MENU,
+            KeyEvent.KEYCODE_TV_CONTENTS_MENU,
+            KeyEvent.KEYCODE_BUTTON_MODE,
+            KeyEvent.KEYCODE_GUIDE -> {
+                App.container.events.postMenuKey()
+                return true
+            }
         }
         return super.onKeyDown(keyCode, event)
     }
