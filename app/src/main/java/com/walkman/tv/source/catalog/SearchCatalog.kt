@@ -322,6 +322,8 @@ private class MiguSearch(private val http: CatalogHttp) : SongCatalog {
         }
         val extras = mutableMapOf("copyrightId" to copyrightId)
         d.optString("lyricUrl").ifEmpty { null }?.let { extras["lrcUrl"] = it }
+        // Migu MV: mvCopyrightId is the resourceId fed to /resourceinfo.do?resourceType=D.
+        d.optString("mvCopyrightId").ifEmpty { null }?.let { extras["mvId"] = it }
         return Track(
             id = Track.makeID(SourceID.MG, songmid),
             name = d.optString("name", "未知"),
