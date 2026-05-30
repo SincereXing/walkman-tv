@@ -23,9 +23,21 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
-        ndk {
-            // quickjs wrapper ships .so for these ABIs
-            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        // No abiFilters here on purpose — the `splits.abi` block below drives which ABIs are
+        // included. We drop x86 (no TV hardware ships on that ABI) and keep arm64-v8a /
+        // armeabi-v7a / x86_64 (the Android TV emulator).
+    }
+
+    // Produce one APK per supported ABI plus a universal fallback. The arm64-v8a APK targets
+    // modern Android TVs (2018+), armeabi-v7a covers older 32-bit chassis, x86_64 is for the
+    // Android TV emulator. Universal bundles all three so a user who doesn't know their TV's
+    // ABI can still install something. Each per-ABI APK is ~30% the size of the fat universal.
+    splits {
+        abi {
+            enable true
+            reset()
+            include "armeabi-v7a", "arm64-v8a", "x86_64"
+            universalApk true
         }
     }
 
@@ -85,6 +97,18 @@ android {
         resources {
             excludes += ["/META-INF/{AL2.0,LGPL2.1}", "META-INF/*.kotlin_module"]
         }
+    }
+}
+
+// Rename output APKs from the default `app-{abi}-{buildType}.apk` so they're recognisable
+// when copied off the build server / sent over WeChat etc. Universal APK (no ABI filter)
+// gets the literal "universal" tag.
+import com.android.build.OutputFile
+android.applicationVariants.all { variant ->
+    variant.outputs.each { output ->
+        def abi = output.getFilter(OutputFile.ABI)
+        def tag = abi ?: "universal"
+        output.outputFileName = "walkman-tv-${variant.versionName}-${tag}-${variant.buildType.name}.apk"
     }
 }
 
