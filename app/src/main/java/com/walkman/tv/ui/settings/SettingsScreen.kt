@@ -191,7 +191,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                                 }
                                 Text(if (s.enabled) "已启用" else "已停用", color = if (s.enabled) AppColors.AccentGreen else AppColors.TextMuted, fontSize = 12.sp)
                                 Spacer(Modifier.width(12.dp))
-                                TvPill(onClick = { scope.launch { appContainer.scriptStore.remove(s.id) } }) { Text("删除", fontSize = 12.sp) }
+                                TvPill(
+                                    onClick = { scope.launch { appContainer.scriptStore.remove(s.id) } },
+                                    accent = AppColors.Danger,
+                                ) { Text("删除", fontSize = 12.sp) }
                             }
                         }
                     }

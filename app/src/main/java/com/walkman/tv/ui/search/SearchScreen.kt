@@ -323,6 +323,7 @@ private fun SearchHistoryPane(history: List<String>, onPick: (String) -> Unit) {
             Spacer(Modifier.weight(1f))
             TvPill(
                 onClick = { scope.launch { appContainer.searchHistoryStore.clear() } },
+                accent = AppColors.Danger,
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
             ) {
                 Text("清空", fontSize = 12.sp)

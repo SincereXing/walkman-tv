@@ -183,7 +183,8 @@ private fun ExitConfirmDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
                 }
                 TvPill(
                     onClick = onConfirm,
-                    selected = true, // green-tinted so '确定' reads as the danger option
+                    selected = true,
+                    accent = AppColors.Danger,  // 红色基调 — 让破坏性动作从「OK 绿」里拽出来
                     contentPadding = PaddingValues(horizontal = 28.dp, vertical = 10.dp),
                 ) {
                     Text("确定", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)

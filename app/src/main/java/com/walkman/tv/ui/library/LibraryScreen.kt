@@ -173,7 +173,7 @@ private fun HistoryTab(
         Text(history.name, fontSize = 18.sp, color = AppColors.TextPrimary)
         Spacer(Modifier.weight(1f))
         if (history.tracks.isNotEmpty()) {
-            TvPill(onClick = onClear) { Text("清空", fontSize = 12.sp) }
+            TvPill(onClick = onClear, accent = AppColors.Danger) { Text("清空", fontSize = 12.sp) }
         }
     }
     if (history.tracks.isEmpty()) {
@@ -353,7 +353,11 @@ private fun PlaylistDetailPane(
                         Text("返回", fontSize = 12.sp)
                     }
                     if (onDelete != null) {
-                        TvPill(onClick = onDelete, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
+                        TvPill(
+                            onClick = onDelete,
+                            accent = AppColors.Danger,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
+                        ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))
