@@ -22,26 +22,12 @@ class ScriptStore(private val context: Context, private val sourceManager: Sourc
     private val _scripts = MutableStateFlow<List<UserScript>>(emptyList())
     val scripts: StateFlow<List<UserScript>> = _scripts.asStateFlow()
 
-    /** Load persisted scripts and start the enabled ones. On first run, auto-import the bundled
-     *  built_in_v4.js so the app has a working source out of the box. */
+    /** Load persisted scripts and start the enabled ones. First-run users start with no
+     *  custom source — they configure their own via Settings (URL / paste / file / QR upload). */
     suspend fun loadAll() {
         val list = withContext(Dispatchers.IO) { store.load() }
-        if (list.isEmpty()) {
-            importBundled()
-            return
-        }
         _scripts.value = list
         list.filter { it.enabled }.forEach { sourceManager.load(it) }
-    }
-
-    private suspend fun importBundled() {
-        val raw = withContext(Dispatchers.IO) {
-            runCatching {
-                context.assets.open("script/built_in_v4.js")
-                    .use { it.readBytes().toString(Charsets.UTF_8) }
-            }.getOrNull()
-        } ?: return
-        import(raw)
     }
 
     /** Import a raw script: parse its header, persist, and load it. */
