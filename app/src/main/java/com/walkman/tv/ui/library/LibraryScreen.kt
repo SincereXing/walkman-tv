@@ -139,7 +139,6 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
                                 detailId = null
                             }
                         } else null,
-                        upFocus = activeTabFocus,
                     )
                 }
             }
@@ -318,7 +317,6 @@ private fun PlaylistDetailPane(
     onBack: () -> Unit,
     onOpenPlayer: () -> Unit,
     onDelete: (() -> Unit)?,
-    upFocus: FocusRequester,
 ) {
     val playFocus = remember { FocusRequester() }
     LaunchedEffect(playlist.id) { runCatching { playFocus.requestFocus() } }
