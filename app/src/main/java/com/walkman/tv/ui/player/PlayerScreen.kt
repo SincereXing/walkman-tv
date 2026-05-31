@@ -466,6 +466,7 @@ private fun VinylGrooves(modifier: Modifier) {
 
 // ============== Transport ======================================================================
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun TransportBar(
     state: com.walkman.tv.playback.PlaybackState,
