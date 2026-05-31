@@ -484,14 +484,19 @@ private fun TransportBar(
     val track = state.currentTrack
     val faved = track?.let { t -> love.tracks.any { it.id == t.id } } ?: false
     // Per-pill explicit focus neighbours. Geometric focus search and group-level
-    // `focusProperties.exit` both failed to reliably hand off across the centre→right gap on
+    // `focusProperties.exit` both failed to reliably hand off across the centre→side gaps on
     // 1080p TVs, so we wire the edge pills directly:
-    //   Tune  : Left → Cancel (stays put so focus never falls off the left edge)
-    //   Heart : Right → MV    (jump the gap between the centre group and the right group)
-    //   MV    : Left  → Heart (mirror back across the gap so D-pad Left feels symmetric)
-    //   Queue : Right → Cancel (right-edge mirror of the Tune trap)
+    //   Tune   : Left  → Cancel (stays put so focus never falls off the left edge)
+    //   HiRes  : Right → Repeat (jump the gap between left group and centre group)
+    //   Repeat : Left  → HiRes when present (else default search finds Tune)
+    //   Heart  : Right → MV    (jump the gap between centre group and right group)
+    //   MV     : Left  → Heart (mirror back across the right gap)
+    //   Queue  : Right → Cancel (right-edge mirror of the Tune trap)
+    val qualityFocus = remember { FocusRequester() }
+    val repeatFocus = remember { FocusRequester() }
     val mvFocus = remember { FocusRequester() }
     val faveFocus = remember { FocusRequester() }
+    val hasQuality = state.quality != null
 
     Box(modifier = Modifier.fillMaxWidth()) {
         // Left group anchored to CenterStart.
@@ -509,6 +514,8 @@ private fun TransportBar(
                 TvPill(
                     onClick = { /* future: open a quality picker */ },
                     selected = true,
+                    focusRequester = qualityFocus,
+                    modifier = Modifier.focusProperties { right = repeatFocus },
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 ) {
                     Text(it.displayName, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -530,7 +537,13 @@ private fun TransportBar(
                 state.repeatMode == RepeatMode.ONE -> Icons.Filled.RepeatOne
                 else -> Icons.Filled.Repeat
             }
-            IconPill(repeatIcon, active = true, onClick = onCycleRepeat)
+            IconPill(
+                repeatIcon,
+                active = true,
+                focusRequester = repeatFocus,
+                onClick = onCycleRepeat,
+                modifier = if (hasQuality) Modifier.focusProperties { left = qualityFocus } else Modifier,
+            )
             IconPill(Icons.Filled.SkipPrevious, onClick = onPrev)
             IconPill(
                 if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
