@@ -52,8 +52,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.foundation.focusGroup
-import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -468,7 +466,6 @@ private fun VinylGrooves(modifier: Modifier) {
 
 // ============== Transport ======================================================================
 
-@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun TransportBar(
     state: com.walkman.tv.playback.PlaybackState,
@@ -485,31 +482,28 @@ private fun TransportBar(
 ) {
     val track = state.currentTrack
     val faved = track?.let { t -> love.tracks.any { it.id == t.id } } ?: false
-    // Cross-group focus handoff. Geometric focus search alone doesn't reliably jump from the
-    // centre group to the side groups when their pills are 300-500dp apart on a 1080p TV, so
-    // we register a focus target on the first pill of each side group and let
-    // `focusProperties.exit` on the centre group's focusGroup redirect D-pad Right/Left to it.
-    val tuneFocus = remember { FocusRequester() }
+    // Per-pill explicit focus neighbours. Geometric focus search and group-level
+    // `focusProperties.exit` both failed to reliably hand off across the centre→right gap on
+    // 1080p TVs, so we wire the edge pills directly:
+    //   Tune  : Left → Cancel (stays put so focus never falls off the left edge)
+    //   Heart : Right → MV    (jump the gap between the centre group and the right group)
+    //   MV    : Left  → Heart (mirror back across the gap so D-pad Left feels symmetric)
+    //   Queue : Right → Cancel (right-edge mirror of the Tune trap)
     val mvFocus = remember { FocusRequester() }
     val faveFocus = remember { FocusRequester() }
 
     Box(modifier = Modifier.fillMaxWidth()) {
-        // Left group anchored to CenterStart. Mirrors centre→right: when the user D-pads Right
-        // from Tune/HiRes, exit-redirect lands on the play button.
+        // Left group anchored to CenterStart.
         Row(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .focusGroup()
-                .focusProperties {
-                    exit = { dir ->
-                        if (dir == FocusDirection.Right) playFocusRequester ?: FocusRequester.Default
-                        else FocusRequester.Default
-                    }
-                },
+            modifier = Modifier.align(Alignment.CenterStart),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            IconPill(Icons.Filled.Tune, focusRequester = tuneFocus, onClick = onTuneClick)
+            IconPill(
+                Icons.Filled.Tune,
+                onClick = onTuneClick,
+                modifier = Modifier.focusProperties { left = FocusRequester.Cancel },
+            )
             state.quality?.let {
                 TvPill(
                     onClick = { /* future: open a quality picker */ },
@@ -520,21 +514,9 @@ private fun TransportBar(
                 }
             }
         }
-        // Center group. Exit-handoff: Right -> MV (first pill of right group),
-        // Left -> Tune (first pill of left group).
+        // Center group anchored to Center.
         Row(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .focusGroup()
-                .focusProperties {
-                    exit = { dir ->
-                        when (dir) {
-                            FocusDirection.Right -> mvFocus
-                            FocusDirection.Left -> tuneFocus
-                            else -> FocusRequester.Default
-                        }
-                    }
-                },
+            modifier = Modifier.align(Alignment.Center),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -561,30 +543,28 @@ private fun TransportBar(
                 active = faved,
                 focusRequester = faveFocus,
                 onClick = onToggleFav,
+                modifier = Modifier.focusProperties { right = mvFocus },
             )
         }
-        // Right group anchored to CenterEnd. Mirrors centre→left: D-pad Left from MV lands on
-        // the heart button instead of skipping across the whole centre group.
+        // Right group anchored to CenterEnd.
         Row(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .focusGroup()
-                .focusProperties {
-                    exit = { dir ->
-                        if (dir == FocusDirection.Left) faveFocus else FocusRequester.Default
-                    }
-                },
+            modifier = Modifier.align(Alignment.CenterEnd),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TvPill(
                 onClick = onMv,
                 focusRequester = mvFocus,
+                modifier = Modifier.focusProperties { left = faveFocus },
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
             ) {
                 Text("MV", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
-            IconPill(Icons.AutoMirrored.Filled.QueueMusic, onClick = onShowQueue)
+            IconPill(
+                Icons.AutoMirrored.Filled.QueueMusic,
+                onClick = onShowQueue,
+                modifier = Modifier.focusProperties { right = FocusRequester.Cancel },
+            )
         }
     }
 }
@@ -705,10 +685,12 @@ private fun IconPill(
     active: Boolean = false,
     large: Boolean = false,
     focusRequester: FocusRequester? = null,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     TvPill(
         onClick = onClick,
+        modifier = modifier,
         shape = androidx.compose.foundation.shape.CircleShape,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(if (large) 14.dp else 10.dp),
         selected = active,
