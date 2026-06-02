@@ -66,16 +66,26 @@ private val DefaultWaveLayers = listOf(
 )
 
 /**
- * Two overlapping horizontal "audio" lines — same look as iOS AudioWave but each line is a
- * sum of 3 sinusoids with non-integer-ratio frequencies so the curve is irregular (no obvious
- * repeating period). A Hann-like envelope centred slightly off-mid pulls both ends to 0 so the
- * lines converge at the edges. Drifts while [isPlaying] is true, freezes at t=0 when paused.
+ * Two overlapping horizontal "audio" lines — same look as iOS AudioWave. Each line is a
+ * sum of 3 sinusoids with non-integer-ratio frequencies (the *shape*), modulated by an
+ * amplitude envelope (the *pulse*) that breathes with the music.
  *
- * Shared across the full-screen player and the recommend page's NowPlayingPanel so both
- * surfaces animate identically — the layout sizes are different but the math is the same.
+ * When [level] > 0.02 the pulse rides the **real audio RMS** captured by
+ * [com.walkman.tv.playback.AudioLevelProcessor] — the waveform now visibly snaps to drum
+ * hits, bass drops and vocal swells, like its iOS sibling. When [level] is 0 (paused, no
+ * processor data, or the player is in audio-offload mode), the pulse falls back to a
+ * synthetic 2-sine envelope so the wave still looks alive on the recommend NowPlayingPanel
+ * even before a track starts.
+ *
+ * Drifts while [isPlaying] is true, freezes at t=0 when paused. Shared between the
+ * full-screen player and the recommend NowPlayingPanel.
  */
 @Composable
-fun Waveform(isPlaying: Boolean, modifier: Modifier = Modifier) {
+fun Waveform(
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+    level: Float = 0f,
+) {
     val transition = rememberInfiniteTransition(label = "wave")
     val time by transition.animateFloat(
         initialValue = 0f,
@@ -90,13 +100,22 @@ fun Waveform(isPlaying: Boolean, modifier: Modifier = Modifier) {
         val t = if (isPlaying) time.toDouble() else 0.0
         val midY = size.height / 2.0
         val width = size.width.toDouble()
+        // Real-audio path activates the moment the processor publishes anything above the
+        // numerical-noise threshold (matches iOS AudioWave.swift line ~381).
+        val useRealLevel = level > 0.02f
         for (w in DefaultWaveLayers) {
-            // Amplitude breath — 2 incommensurate sines summed for a "music-like" rise/fall.
-            // Floor at 0.28 so the wave never collapses near-flat between beats.
-            val beat = 0.5 +
-                0.38 * sin(t * w.pulse + w.pPhase) +
-                0.22 * sin(t * w.pulse * 1.9 + w.pPhase * 1.7)
-            val pulse = maxOf(0.28, beat)
+            val pulse = if (useRealLevel) {
+                // Real RMS drives every layer's amplitude. Floor at 0.15 so quiet passages
+                // don't completely flatline the line; same floor iOS uses.
+                maxOf(0.15, level.toDouble())
+            } else {
+                // Synthetic fallback — 2 incommensurate sines for a music-like rise/fall.
+                // Floor at 0.28 so the wave never collapses near-flat between beats.
+                val beat = 0.5 +
+                    0.38 * sin(t * w.pulse + w.pPhase) +
+                    0.22 * sin(t * w.pulse * 1.9 + w.pPhase * 1.7)
+                maxOf(0.28, beat)
+            }
             // Leave a stroke-radius gap top + bottom so the painted line never bleeds past
             // the canvas. Cap the fraction at 0.97 for extra safety against rounding overshoot.
             val strokeHalfPx = w.widthDp.dp.toPx() / 2.0

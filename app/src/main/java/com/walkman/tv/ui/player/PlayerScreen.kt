@@ -200,8 +200,10 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             // (Status line removed — quality is shown in the TransportBar Hi-Res pill below;
             // the source / origin / message text is no longer surfaced to the player UI.)
             Spacer(Modifier.height(10.dp))
+            val audioLevel by controller.audioLevel.collectAsState()
             com.walkman.tv.ui.components.Waveform(
                 isPlaying = state.isPlaying,
+                level = audioLevel,
                 modifier = Modifier.fillMaxWidth().height(40.dp),
             )
             Spacer(Modifier.height(6.dp))

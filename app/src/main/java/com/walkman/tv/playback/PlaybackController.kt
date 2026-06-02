@@ -13,6 +13,8 @@ import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import com.walkman.tv.data.store.PlaybackSnapshot
 import com.walkman.tv.data.model.Quality
 import com.walkman.tv.data.model.Track
@@ -59,7 +61,20 @@ class PlaybackController(
     private val sources: SourceManager,
     private val lyricsFetcher: LyricsFetcher,
 ) {
-    val player: ExoPlayer = buildPlayer(context.applicationContext)
+    /**
+     * Real-time audio level (0..1), smoothed by the audio thread inside [AudioLevelProcessor].
+     * Drives the reactive waveform in the player + recommend NowPlayingPanel. Stays at 0 when
+     * the player is paused or when ExoPlayer chooses audio offload (DSP path bypasses the
+     * processor chain — the consuming Waveform then falls back to its synthetic animation).
+     */
+    private val _audioLevel = MutableStateFlow(0f)
+    val audioLevel: StateFlow<Float> = _audioLevel.asStateFlow()
+
+    private val audioLevelProcessor = AudioLevelProcessor { level ->
+        _audioLevel.value = level
+    }
+
+    val player: ExoPlayer = buildPlayer(context.applicationContext, audioLevelProcessor)
 
     private val appContext = context.applicationContext
 
@@ -78,7 +93,10 @@ class PlaybackController(
          *   OPUS / VORBIS extension renderers (when present) win over the slower
          *   MediaCodec path.
          */
-        fun buildPlayer(appContext: android.content.Context): ExoPlayer {
+        fun buildPlayer(
+            appContext: android.content.Context,
+            levelProcessor: AudioLevelProcessor,
+        ): ExoPlayer {
             val loadControl = DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
                     /* minBufferMs = */ 30_000,
@@ -93,7 +111,28 @@ class PlaybackController(
             // float precision so 24-bit sources don't get prematurely truncated to 16-bit PCM.
             // (Audio offload is opted in via TrackSelectionParameters below — the deprecated
             //  DefaultRenderersFactory.setEnableAudioOffload was removed in Media3 1.4.)
-            val renderersFactory = DefaultRenderersFactory(appContext)
+            //
+            // Anonymous subclass overrides buildAudioSink so we can append our
+            // [AudioLevelProcessor] to the DefaultAudioSink's processor chain. The processor
+            // forwards bytes unchanged, so audio quality is preserved. When the OS chooses
+            // audio offload (DSP / HDMI passthrough / A2DP offload), this chain is bypassed
+            // entirely and the processor stops receiving samples — the consumer naturally
+            // falls back to a synthetic waveform.
+            val renderersFactory = object : DefaultRenderersFactory(appContext) {
+                override fun buildAudioSink(
+                    context: android.content.Context,
+                    enableFloatOutput: Boolean,
+                    enableAudioTrackPlaybackParams: Boolean,
+                ): AudioSink? {
+                    return DefaultAudioSink.Builder(context)
+                        .setEnableFloatOutput(enableFloatOutput)
+                        .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                        .setAudioProcessorChain(
+                            DefaultAudioSink.DefaultAudioProcessorChain(levelProcessor),
+                        )
+                        .build()
+                }
+            }
                 .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
                 .setEnableAudioFloatOutput(true)
                 .setEnableAudioTrackPlaybackParams(true)
@@ -146,6 +185,9 @@ class PlaybackController(
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _state.value = _state.value.copy(isPlaying = isPlaying)
+                // Pause: drop the audio level immediately so the waveform settles instead
+                // of holding whatever amplitude the last decoded chunk reported.
+                if (!isPlaying) _audioLevel.value = 0f
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {

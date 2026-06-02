@@ -90,11 +90,12 @@ private fun NowPlayingPanel(onOpenPlayer: () -> Unit, modifier: Modifier = Modif
         // controls. All constrained to the cover's width (240dp). Hidden entirely when no track.
         if (track != null) {
             Spacer(Modifier.height(10.dp))
-            // Shared with the full-screen player so both surfaces animate identically.
-            // Slightly taller (28dp) than the line height so the 1.6dp stroke and the
-            // ~0.97 amplitude cap have room without clipping at the 240dp width.
+            // Shared with the full-screen player so both surfaces animate identically — and
+            // both ride the same real-time audio level from AudioLevelProcessor.
+            val audioLevel by controller.audioLevel.collectAsState()
             com.walkman.tv.ui.components.Waveform(
                 isPlaying = state.isPlaying,
+                level = audioLevel,
                 modifier = Modifier.width(240.dp).height(28.dp),
             )
             Spacer(Modifier.height(6.dp))
