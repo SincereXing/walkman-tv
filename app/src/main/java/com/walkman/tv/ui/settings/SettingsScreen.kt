@@ -183,19 +183,39 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     scripts.forEach { s ->
-                        TvFocusable(onClick = { scope.launch { appContainer.scriptStore.setEnabled(s.id, !s.enabled) } }, modifier = Modifier.fillMaxWidth()) {
-                            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(s.name, color = AppColors.TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("v${s.version}  ${s.author}", color = AppColors.TextMuted, fontSize = 12.sp)
+                        // Two side-by-side focusables (toggle area + delete pill). Previously
+                        // the delete TvPill was nested *inside* the outer TvFocusable, which
+                        // meant the row's clickable Surface absorbed focus and D-pad navigation
+                        // never reached the inner pill — clicking the row always toggled
+                        // enabled/disabled but the delete button was unreachable.
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TvFocusable(
+                                onClick = { scope.launch { appContainer.scriptStore.setEnabled(s.id, !s.enabled) } },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(s.name, color = AppColors.TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("v${s.version}  ${s.author}", color = AppColors.TextMuted, fontSize = 12.sp)
+                                    }
+                                    Text(
+                                        if (s.enabled) "已启用" else "已停用",
+                                        color = if (s.enabled) AppColors.AccentGreen else AppColors.TextMuted,
+                                        fontSize = 12.sp,
+                                    )
                                 }
-                                Text(if (s.enabled) "已启用" else "已停用", color = if (s.enabled) AppColors.AccentGreen else AppColors.TextMuted, fontSize = 12.sp)
-                                Spacer(Modifier.width(12.dp))
-                                TvPill(
-                                    onClick = { scope.launch { appContainer.scriptStore.remove(s.id) } },
-                                    accent = AppColors.Danger,
-                                ) { Text("删除", fontSize = 12.sp) }
                             }
+                            Spacer(Modifier.width(12.dp))
+                            TvPill(
+                                onClick = { scope.launch { appContainer.scriptStore.remove(s.id) } },
+                                accent = AppColors.Danger,
+                            ) { Text("删除", fontSize = 12.sp) }
                         }
                     }
                 }
