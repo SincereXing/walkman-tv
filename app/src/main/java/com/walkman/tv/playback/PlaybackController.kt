@@ -294,7 +294,21 @@ class PlaybackController(
     }
 
     fun togglePlay() {
-        if (player.isPlaying) player.pause() else player.play()
+        if (player.isPlaying) {
+            player.pause()
+            return
+        }
+        // Cold-start path: restoreSnapshot() stages the queue + index in [_state] but only
+        // calls playAt() when the previous session was actively playing (wasPlaying=true).
+        // If the user left paused, ExoPlayer is empty on relaunch — `player.play()` is a
+        // no-op. Lazy-resolve the current track now so the play button actually starts the
+        // song that the UI is already showing.
+        val s = _state.value
+        if (player.mediaItemCount == 0 && s.queue.isNotEmpty() && s.index in s.queue.indices) {
+            playAt(s.index)
+        } else {
+            player.play()
+        }
     }
 
     fun next() {
