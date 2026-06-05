@@ -12,7 +12,7 @@ import java.io.File
 
 @Serializable
 data class Settings(
-    val preferredQuality: Quality = Quality.K320,
+    val preferredQuality: Quality = Quality.FLAC24,
     val fallbackEnabled: Boolean = true,
     val showLyricTranslation: Boolean = true,
 )
