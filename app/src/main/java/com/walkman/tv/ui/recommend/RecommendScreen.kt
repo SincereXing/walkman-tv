@@ -181,6 +181,9 @@ private fun CircleControl(icon: androidx.compose.ui.graphics.vector.ImageVector,
 // ============== Discover-page right column =====================================================
 // Implementation of docs/discover-page-spec-android-tv.md.
 
+/** Captured detail data — title / subtitle / tracks — used by [TracksDetailOverlay]. */
+private data class DetailView(val title: String, val subtitle: String?, val tracks: List<com.walkman.tv.data.model.Track>)
+
 @Composable
 private fun RecommendGrid(
     onNavigate: (NavSection) -> Unit,
@@ -190,6 +193,8 @@ private fun RecommendGrid(
     val settings by appContainer.settingsStore.settings.collectAsState()
     val home by appContainer.homeStore.state.collectAsState()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var detail by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<DetailView?>(null) }
+    var loadingDetail by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     // Re-fetch whenever the user toggles a source in/out (HomeStore deduplicates equal sets).
     androidx.compose.runtime.LaunchedEffect(settings.homeSources) {
@@ -198,50 +203,117 @@ private fun RecommendGrid(
 
     val activeLabel = home.sources.joinToString(" · ") { it.displayName }
 
-    androidx.compose.foundation.lazy.LazyColumn(
-        modifier = modifier,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        when {
-            settings.homeSources.isEmpty() -> item { NoSourcesHint(onNavigate) }
-            home.isLoading && home.heroes.isEmpty() -> item { LoadingPlaceholder() }
-            else -> {
-                if (home.heroes.isNotEmpty()) {
-                    item {
-                        HeroCarousel(
-                            heroes = home.heroes,
-                            onSelect = { hero ->
-                                scope.launch { playSonglistAll(hero.songlist, onOpenPlayer) }
-                            },
-                        )
-                    }
-                }
-                if (home.recommendations.isNotEmpty()) {
-                    item {
-                        SectionHeader("推荐歌单", activeLabel, trailing = "查看全部") {
-                            onNavigate(NavSection.Songlist)
+    fun openSonglist(info: com.walkman.tv.data.model.SonglistInfo) {
+        if (loadingDetail) return
+        scope.launch {
+            loadingDetail = true
+            val svc = appContainer.songlists.serviceFor(info.source)
+            val d = runCatching { svc?.fetchDetail(info) }.getOrNull()
+            detail = DetailView(
+                title = info.name,
+                subtitle = info.author?.takeIf { it.isNotBlank() } ?: info.source.displayName,
+                tracks = d?.tracks ?: emptyList(),
+            )
+            loadingDetail = false
+        }
+    }
+
+    fun openBoard(board: com.walkman.tv.data.model.BoardInfo) {
+        if (loadingDetail) return
+        scope.launch {
+            loadingDetail = true
+            val svc = appContainer.boards.serviceFor(board.source)
+            val tracks = runCatching { svc?.fetchTracks(board.bangid, 1) ?: emptyList() }.getOrDefault(emptyList())
+            detail = DetailView(
+                title = board.name,
+                subtitle = board.source.displayName,
+                tracks = tracks,
+            )
+            loadingDetail = false
+        }
+    }
+
+    Box(modifier = modifier) {
+        androidx.compose.foundation.lazy.LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            // Top stats — 已播 / 收藏 from libraryStore. Quick way to peek at counts without
+            // hopping over to the Library tab.
+            item { StatsRow(onNavigate) }
+
+            when {
+                settings.homeSources.isEmpty() -> item { NoSourcesHint(onNavigate) }
+                home.isLoading && home.heroes.isEmpty() -> item { LoadingPlaceholder() }
+                else -> {
+                    if (home.heroes.isNotEmpty()) {
+                        item {
+                            HeroCarousel(
+                                heroes = home.heroes,
+                                onSelect = { hero -> openSonglist(hero.songlist) },
+                            )
                         }
                     }
-                    item {
-                        SonglistRow(home.recommendations) { info ->
-                            scope.launch { playSonglistAll(info, onOpenPlayer) }
+                    if (home.recommendations.isNotEmpty()) {
+                        item {
+                            SectionHeader("推荐歌单", activeLabel, trailing = "查看全部") {
+                                onNavigate(NavSection.Songlist)
+                            }
+                        }
+                        item {
+                            SonglistRow(home.recommendations) { info -> openSonglist(info) }
                         }
                     }
-                }
-                if (home.boards.isNotEmpty()) {
-                    item {
-                        SectionHeader("排行榜", activeLabel, trailing = "查看全部") {
-                            onNavigate(NavSection.Leaderboard)
+                    if (home.boards.isNotEmpty()) {
+                        item {
+                            SectionHeader("排行榜", activeLabel, trailing = "查看全部") {
+                                onNavigate(NavSection.Leaderboard)
+                            }
                         }
-                    }
-                    item {
-                        BoardRow(home.boards) { board ->
-                            scope.launch { playBoardAll(board, onOpenPlayer) }
+                        item {
+                            BoardRow(home.boards) { board -> openBoard(board) }
                         }
                     }
                 }
             }
+        }
+
+        // Detail overlay paints over the discover content; LazyColumn underneath keeps its
+        // scroll position + focus, so back-navigation is instant. Same pattern SonglistScreen
+        // uses (and now both share TracksDetailOverlay).
+        detail?.let { d ->
+            com.walkman.tv.ui.components.TracksDetailOverlay(
+                title = d.title,
+                subtitle = d.subtitle,
+                tracks = d.tracks,
+                onBack = { detail = null },
+                onOpenPlayer = onOpenPlayer,
+            )
+        }
+    }
+}
+
+/** Small horizontal row of stat tiles at the top of the discover page. */
+@Composable
+private fun StatsRow(onNavigate: (NavSection) -> Unit) {
+    val played by appContainer.libraryStore.history.collectAsState()
+    val loved by appContainer.libraryStore.love.collectAsState()
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+        StatTile("已播", played.tracks.size, Modifier.weight(1f)) { onNavigate(NavSection.Library) }
+        StatTile("收藏", loved.tracks.size, Modifier.weight(1f)) { onNavigate(NavSection.Library) }
+    }
+}
+
+@Composable
+private fun StatTile(label: String, count: Int, modifier: Modifier, onClick: () -> Unit) {
+    TvFocusable(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, color = AppColors.TextSecondary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text("$count", color = AppColors.TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Black)
         }
     }
 }
@@ -597,23 +669,3 @@ private fun com.walkman.tv.data.model.SourceID.tintColor(): Color = when (this) 
     com.walkman.tv.data.model.SourceID.LOCAL -> AppColors.SourceLocal
 }
 
-/** Click a songlist card → fetch detail and play the whole list. */
-private suspend fun playSonglistAll(info: com.walkman.tv.data.model.SonglistInfo, openPlayer: () -> Unit) {
-    val svc = appContainer.songlists.serviceFor(info.source) ?: return
-    val detail = kotlin.runCatching { svc.fetchDetail(info) }.getOrNull() ?: return
-    val tracks = detail.tracks
-    if (tracks.isNotEmpty()) {
-        com.walkman.tv.ui.playList(tracks, 0)
-        openPlayer()
-    }
-}
-
-/** Click a board card → fetch its first page and play. */
-private suspend fun playBoardAll(board: com.walkman.tv.data.model.BoardInfo, openPlayer: () -> Unit) {
-    val svc = appContainer.boards.serviceFor(board.source) ?: return
-    val tracks = kotlin.runCatching { svc.fetchTracks(board.bangid, 1) }.getOrDefault(emptyList())
-    if (tracks.isNotEmpty()) {
-        com.walkman.tv.ui.playList(tracks, 0)
-        openPlayer()
-    }
-}

@@ -1,6 +1,5 @@
 package com.walkman.tv.ui.songlist
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,7 +16,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,7 +23,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
@@ -38,10 +35,7 @@ import com.walkman.tv.ui.appContainer
 import com.walkman.tv.ui.components.EmptyHint
 import com.walkman.tv.ui.components.LoadingState
 import com.walkman.tv.ui.components.MediaCard
-import com.walkman.tv.ui.components.TrackList
 import com.walkman.tv.ui.components.TvPill
-import com.walkman.tv.ui.playList
-import com.walkman.tv.ui.theme.AppColors
 import kotlinx.coroutines.launch
 
 private val songlistSources = listOf(SourceID.KW, SourceID.WY, SourceID.KG, SourceID.TX)
@@ -126,24 +120,13 @@ fun SonglistScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
         // preserving scroll position, fetched lists, and focus.
         if (detail != null) {
             val (info, tracks) = detail!!
-            BackHandler { detail = null }
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(AppColors.BgDeep)
-                    .padding(top = 8.dp),
-            ) {
-                Text(info.name, color = AppColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                val nowId = appContainer.playbackController.state.collectAsState().value.currentTrack?.id
-                TrackList(
-                    tracks,
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    nowPlayingId = nowId,
-                    initialFocus = true,
-                ) { idx ->
-                    playList(tracks, idx); onOpenPlayer()
-                }
-            }
+            com.walkman.tv.ui.components.TracksDetailOverlay(
+                title = info.name,
+                subtitle = info.author?.takeIf { it.isNotBlank() },
+                tracks = tracks,
+                onBack = { detail = null },
+                onOpenPlayer = onOpenPlayer,
+            )
         }
     }
 }
