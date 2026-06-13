@@ -213,7 +213,7 @@ private fun RecommendGrid(
             val d = runCatching { svc?.fetchDetail(info) }.getOrNull()
             detail = DetailView(
                 title = info.name,
-                subtitle = info.author?.takeIf { it.isNotBlank() } ?: info.source.displayName,
+                subtitle = info.author.takeIf { it.isNotBlank() } ?: info.source.displayName,
                 tracks = d?.tracks ?: emptyList(),
             )
             loadingDetail = false

@@ -122,7 +122,7 @@ fun SonglistScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
             val (info, tracks) = detail!!
             com.walkman.tv.ui.components.TracksDetailOverlay(
                 title = info.name,
-                subtitle = info.author?.takeIf { it.isNotBlank() },
+                subtitle = info.author.takeIf { it.isNotBlank() },
                 tracks = tracks,
                 onBack = { detail = null },
                 onOpenPlayer = onOpenPlayer,
