@@ -60,6 +60,8 @@ class AppContainer(val appContext: Context) {
     val catalogs by lazy { Catalogs(catalogHttp) }
     val boards by lazy { Boards(catalogHttp) }
     val songlists by lazy { Songlists(catalogHttp) }
+    /** Backs the recommend (discover) right column — heroes / recommendations / boards. */
+    val homeStore by lazy { com.walkman.tv.ui.recommend.HomeStore(songlists, boards) }
     val mvResolver by lazy { MvResolver(catalogHttp) }
 
     private val scriptHttp by lazy { ScriptHttpClient(httpClient) }

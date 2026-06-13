@@ -2,6 +2,10 @@ package com.walkman.tv.ui.recommend
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,7 +56,11 @@ fun RecommendScreen(
     Row(modifier = modifier.fillMaxSize().padding(vertical = 8.dp)) {
         NowPlayingPanel(onOpenPlayer = onOpenPlayer, modifier = Modifier.width(340.dp).fillMaxHeight())
         Spacer(Modifier.width(16.dp))
-        RecommendGrid(onNavigate = onNavigate, modifier = Modifier.weight(1f).fillMaxHeight())
+        RecommendGrid(
+            onNavigate = onNavigate,
+            onOpenPlayer = onOpenPlayer,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+        )
     }
 }
 
@@ -167,117 +175,404 @@ private fun CircleControl(icon: androidx.compose.ui.graphics.vector.ImageVector,
     }
 }
 
-// Image URLs ported from the RN TV recommend page (Unsplash, small thumbs).
-private object CardImages {
-    const val GUESS = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&q=80"
-    const val DAILY = "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&q=80"
-    const val CHART = "https://images.unsplash.com/photo-1493225255756-d9584f8606e9?w=600&q=80"
-    const val NEW = "https://images.unsplash.com/photo-1619983081563-430f63602796?w=600&q=80"
-    const val ALBUM = "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=600&q=80"
-    const val CLASSIC = "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=600&q=80"
-    const val DRIVE = "https://images.unsplash.com/photo-1525085475163-c65546867694?w=600&q=80"
-    const val VINYL = "https://images.unsplash.com/photo-1605218427368-35b844d95791?w=600&q=80"
-    const val PLAYED = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&q=60"
-    const val LOVE = "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=200&q=60"
-}
+// ============== Discover-page right column =====================================================
+// Implementation of docs/discover-page-spec-android-tv.md.
 
 @Composable
-private fun RecommendGrid(onNavigate: (NavSection) -> Unit, modifier: Modifier = Modifier) {
-    val played by appContainer.libraryStore.history.collectAsState()
-    val loved by appContainer.libraryStore.love.collectAsState()
+private fun RecommendGrid(
+    onNavigate: (NavSection) -> Unit,
+    onOpenPlayer: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val settings by appContainer.settingsStore.settings.collectAsState()
+    val home by appContainer.homeStore.state.collectAsState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            BigCard("猜你喜欢", CardImages.GUESS, Modifier.weight(1f)) { onNavigate(NavSection.Library) }
-            BigCard("Daily 30", CardImages.DAILY, Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SmallCard("排行榜", CardImages.CHART, Modifier.weight(1f)) { onNavigate(NavSection.Leaderboard) }
-                SmallCard("新歌", CardImages.NEW, Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
-            }
-        }
-        Row(modifier = Modifier.fillMaxWidth().height(72.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCard("已播", played.tracks.size, CardImages.PLAYED, Modifier.weight(1f)) { onNavigate(NavSection.Library) }
-            StatCard("收藏", loved.tracks.size, CardImages.LOVE, Modifier.weight(1f)) { onNavigate(NavSection.Library) }
-        }
-        Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            BigCard("新歌新碟", CardImages.ALBUM, Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
-            BigCard("经典老歌", CardImages.CLASSIC, Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SmallCard("车载热门", CardImages.DRIVE, Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
-                SmallCard("黑胶专区", CardImages.VINYL, Modifier.weight(1f)) { onNavigate(NavSection.Songlist) }
+    // Re-fetch whenever the user toggles a source in/out (HomeStore deduplicates equal sets).
+    androidx.compose.runtime.LaunchedEffect(settings.homeSources) {
+        appContainer.homeStore.loadIfNeeded(settings.homeSources)
+    }
+
+    val activeLabel = home.sources.joinToString(" · ") { it.displayName }
+
+    androidx.compose.foundation.lazy.LazyColumn(
+        modifier = modifier,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        when {
+            settings.homeSources.isEmpty() -> item { NoSourcesHint(onNavigate) }
+            home.isLoading && home.heroes.isEmpty() -> item { LoadingPlaceholder() }
+            else -> {
+                if (home.heroes.isNotEmpty()) {
+                    item {
+                        HeroCarousel(
+                            heroes = home.heroes,
+                            onSelect = { hero ->
+                                scope.launch { playSonglistAll(hero.songlist, onOpenPlayer) }
+                            },
+                        )
+                    }
+                }
+                if (home.recommendations.isNotEmpty()) {
+                    item {
+                        SectionHeader("推荐歌单", activeLabel, trailing = "查看全部") {
+                            onNavigate(NavSection.Songlist)
+                        }
+                    }
+                    item {
+                        SonglistRow(home.recommendations) { info ->
+                            scope.launch { playSonglistAll(info, onOpenPlayer) }
+                        }
+                    }
+                }
+                if (home.boards.isNotEmpty()) {
+                    item {
+                        SectionHeader("排行榜", activeLabel, trailing = "查看全部") {
+                            onNavigate(NavSection.Leaderboard)
+                        }
+                    }
+                    item {
+                        BoardRow(home.boards) { board ->
+                            scope.launch { playBoardAll(board, onOpenPlayer) }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun BigCard(title: String, picURL: String, modifier: Modifier, onClick: () -> Unit) {
-    TvFocusable(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(14.dp)) {
-        Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp))) {
-            AsyncImage(
-                model = picURL, contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
+private fun SectionHeader(
+    title: String,
+    subtitle: String?,
+    trailing: String?,
+    onTrailingClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Text(title, color = AppColors.TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        if (!subtitle.isNullOrBlank()) {
+            Spacer(Modifier.width(10.dp))
+            Text(
+                subtitle,
+                color = AppColors.TextMuted,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(bottom = 4.dp),
             )
-            // Bottom-to-top dark overlay so the title is always readable.
+        }
+        Spacer(Modifier.weight(1f))
+        if (!trailing.isNullOrBlank()) {
+            TvPill(
+                onClick = onTrailingClick,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+            ) {
+                Text(trailing, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+/**
+ * Hero carousel — auto-rotates every 6 s, resets the timer whenever the user changes index.
+ * Spec §5 + §7.6 (auto-rotate pauses when offscreen — covered by LaunchedEffect lifecycle).
+ */
+@Composable
+private fun HeroCarousel(heroes: List<HeroItem>, onSelect: (HeroItem) -> Unit) {
+    var index by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+    // Auto-cycle every 6s; key on heroes.size + manual changes so user input resets the dwell.
+    androidx.compose.runtime.LaunchedEffect(heroes.size, index) {
+        if (heroes.size > 1) {
+            kotlinx.coroutines.delay(6_000)
+            index = (index + 1) % heroes.size
+        }
+    }
+    val current = heroes.getOrNull(index) ?: return
+
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        HeroBanner(item = current, onClick = { onSelect(current) })
+        // Indicator: long capsule = active, dot = inactive (spec §5).
+        if (heroes.size > 1) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            ) {
+                heroes.forEachIndexed { i, _ ->
+                    val active = i == index
+                    Box(
+                        modifier = Modifier
+                            .width(if (active) 22.dp else 6.dp)
+                            .height(5.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(if (active) AppColors.BrandPrimary else AppColors.TextMuted.copy(alpha = 0.45f)),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroBanner(item: HeroItem, onClick: () -> Unit) {
+    val tint = item.source.tintColor()
+    val accentEnd = tint.copy(alpha = 0.65f)
+    TvFocusable(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().height(240.dp),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp))) {
+            // 1) Backing gradient — source brand colour fading toward dark.
             Box(
                 modifier = Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))),
+                    Brush.linearGradient(
+                        colors = listOf(tint, accentEnd, Color.Black.copy(alpha = 0.85f)),
+                    ),
                 ),
             )
-            Text(
-                title,
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun SmallCard(title: String, picURL: String, modifier: Modifier, onClick: () -> Unit) {
-    TvFocusable(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(10.dp)) {
-        Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp))) {
-            AsyncImage(
-                model = picURL, contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
-            Text(
-                title,
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.align(Alignment.Center),
-            )
-        }
-    }
-}
-
-@Composable
-private fun StatCard(title: String, count: Int, picURL: String, modifier: Modifier, onClick: () -> Unit) {
-    TvFocusable(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(36.dp)) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(start = 8.dp, end = 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Small round thumbnail on the left.
-            Box(
-                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(50)),
-            ) {
+            // 2) Cover thumbnail at low opacity — gives the banner texture without a blur.
+            item.songlist.picURL?.let {
                 AsyncImage(
-                    model = picURL,
+                    model = it,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().alpha(0.18f),
                     contentScale = ContentScale.Crop,
                 )
             }
-            Spacer(Modifier.width(12.dp))
-            Text(title, color = AppColors.TextSecondary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Text("$count", color = AppColors.TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            // 3) Left content + right cover.
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 22.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        item.songlist.name,
+                        color = Color.White,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    val subParts = buildList {
+                        add(item.source.displayName)
+                        val plays = item.songlist.playCount
+                        if (!plays.isNullOrBlank()) add(plays) else add("热门播放")
+                    }
+                    Text(
+                        subParts.joinToString(" · "),
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.White)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                tint = tint,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("立即播放", color = tint, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                Spacer(Modifier.width(20.dp))
+                Box(
+                    modifier = Modifier.size(180.dp).clip(RoundedCornerShape(14.dp)),
+                ) {
+                    item.songlist.picURL?.let {
+                        AsyncImage(
+                            model = it,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } ?: Artwork(null, modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(14.dp))
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun SonglistRow(items: List<com.walkman.tv.data.model.SonglistInfo>, onSelect: (com.walkman.tv.data.model.SonglistInfo) -> Unit) {
+    androidx.compose.foundation.lazy.LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+    ) {
+        items(items, key = { "${it.source.key}_${it.id}" }) { info ->
+            AlbumCard(
+                picURL = info.picURL,
+                title = info.name,
+                subtitle = info.playCount?.let { "▶ $it" } ?: info.source.displayName,
+                fallbackTint = info.source.tintColor(),
+                onClick = { onSelect(info) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun BoardRow(items: List<com.walkman.tv.data.model.BoardInfo>, onSelect: (com.walkman.tv.data.model.BoardInfo) -> Unit) {
+    androidx.compose.foundation.lazy.LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+    ) {
+        items(items, key = { "${it.source.key}_${it.id}" }) { board ->
+            AlbumCard(
+                picURL = board.picURL,
+                title = board.name,
+                subtitle = board.source.displayName,
+                fallbackTint = board.source.tintColor(),
+                onClick = { onSelect(board) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun AlbumCard(
+    picURL: String?,
+    title: String,
+    subtitle: String?,
+    fallbackTint: Color,
+    onClick: () -> Unit,
+) {
+    Column(modifier = Modifier.width(170.dp)) {
+        TvFocusable(onClick = onClick, modifier = Modifier.size(170.dp), shape = RoundedCornerShape(12.dp)) {
+            Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))) {
+                if (!picURL.isNullOrBlank()) {
+                    AsyncImage(
+                        model = picURL,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(
+                            Brush.linearGradient(listOf(fallbackTint, fallbackTint.copy(alpha = 0.5f))),
+                        ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.size(40.dp),
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            title,
+            color = AppColors.TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (!subtitle.isNullOrBlank()) {
+            Text(
+                subtitle,
+                color = AppColors.TextMuted,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LoadingPlaceholder() {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 60.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        // Hero placeholder
+        Box(
+            modifier = Modifier
+                .fillMaxWidth().height(240.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(AppColors.Card),
+        )
+        // Two carousel rows
+        repeat(2) {
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                repeat(4) {
+                    Box(
+                        modifier = Modifier
+                            .size(170.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(AppColors.Card),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoSourcesHint(onNavigate: (NavSection) -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 80.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("没有勾选任何音源", color = AppColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        Text("去设置里勾选一个音源后再来发现", color = AppColors.TextMuted, fontSize = 13.sp)
+        Spacer(Modifier.height(16.dp))
+        TvPill(onClick = { onNavigate(NavSection.Settings) }, selected = true) {
+            Text("打开设置", fontSize = 13.sp)
+        }
+    }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────────────────
+
+/** Map per-platform tint colour for hero gradients + card fallbacks. */
+private fun com.walkman.tv.data.model.SourceID.tintColor(): Color = when (this) {
+    com.walkman.tv.data.model.SourceID.KW -> AppColors.SourceKw
+    com.walkman.tv.data.model.SourceID.KG -> AppColors.SourceKg
+    com.walkman.tv.data.model.SourceID.TX -> AppColors.SourceTx
+    com.walkman.tv.data.model.SourceID.WY -> AppColors.SourceWy
+    com.walkman.tv.data.model.SourceID.MG -> AppColors.SourceMg
+    com.walkman.tv.data.model.SourceID.LOCAL -> AppColors.SourceLocal
+}
+
+/** Click a songlist card → fetch detail and play the whole list. */
+private suspend fun playSonglistAll(info: com.walkman.tv.data.model.SonglistInfo, openPlayer: () -> Unit) {
+    val svc = appContainer.songlists.serviceFor(info.source) ?: return
+    val detail = kotlin.runCatching { svc.fetchDetail(info) }.getOrNull() ?: return
+    val tracks = detail.tracks
+    if (tracks.isNotEmpty()) {
+        com.walkman.tv.ui.playList(tracks, 0)
+        openPlayer()
+    }
+}
+
+/** Click a board card → fetch its first page and play. */
+private suspend fun playBoardAll(board: com.walkman.tv.data.model.BoardInfo, openPlayer: () -> Unit) {
+    val svc = appContainer.boards.serviceFor(board.source) ?: return
+    val tracks = kotlin.runCatching { svc.fetchTracks(board.bangid, 1) }.getOrDefault(emptyList())
+    if (tracks.isNotEmpty()) {
+        com.walkman.tv.ui.playList(tracks, 0)
+        openPlayer()
     }
 }

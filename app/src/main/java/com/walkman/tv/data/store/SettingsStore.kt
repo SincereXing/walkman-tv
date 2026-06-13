@@ -15,6 +15,14 @@ data class Settings(
     val preferredQuality: Quality = Quality.FLAC24,
     val fallbackEnabled: Boolean = true,
     val showLyricTranslation: Boolean = true,
+    /** Sources that feed the discover (home) page. Spec docs/discover-page-spec-android-tv.md §2:
+     *  fixed 4 in order kw → wy → kg → tx, default all enabled. */
+    val homeSources: Set<com.walkman.tv.data.model.SourceID> = setOf(
+        com.walkman.tv.data.model.SourceID.KW,
+        com.walkman.tv.data.model.SourceID.WY,
+        com.walkman.tv.data.model.SourceID.KG,
+        com.walkman.tv.data.model.SourceID.TX,
+    ),
 )
 
 /** App preferences persisted as JSON. */

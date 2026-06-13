@@ -137,6 +137,31 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
+        Section("发现页音源") {
+            // Toggle each source in/out. The discover (home) page subtitle and section
+            // contents track this list in real time — see HomeStore.loadIfNeeded.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.walkman.tv.data.model.SourceID.homePageOrder.forEach { src ->
+                    val active = src in settings.homeSources
+                    TvPill(
+                        onClick = {
+                            scope.launch {
+                                appContainer.settingsStore.update { s ->
+                                    val next = if (active) s.homeSources - src else s.homeSources + src
+                                    // Spec §8: never let the set collapse to empty — keep at least
+                                    // one source so the discover page stays usable.
+                                    s.copy(homeSources = if (next.isEmpty()) s.homeSources else next)
+                                }
+                            }
+                        },
+                        selected = active,
+                    ) {
+                        Text(src.displayName, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+
         Section("内置直连兜底") {
             ToggleRow("脚本失败时尝试内置直连（kw/wy）", settings.fallbackEnabled) {
                 scope.launch { appContainer.settingsStore.update { it.copy(fallbackEnabled = !it.fallbackEnabled) } }

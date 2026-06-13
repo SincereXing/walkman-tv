@@ -17,6 +17,9 @@ enum class SourceID(val key: String, val displayName: String) {
         fun fromKey(key: String?): SourceID? = entries.firstOrNull { it.key == key }
         /** Sources usable as online music platforms (exclude local). */
         val onlineSources: List<SourceID> = listOf(KW, KG, TX, WY, MG)
+
+        /** Fixed order for the discover (home) page — spec docs/discover-page-spec-android-tv.md §2. */
+        val homePageOrder: List<SourceID> = listOf(KW, WY, KG, TX)
     }
 }
 
