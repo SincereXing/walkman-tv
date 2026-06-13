@@ -19,7 +19,13 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Diamond
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.SurroundSound
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -322,10 +328,10 @@ private fun ToggleRow(label: String, on: Boolean, onToggle: () -> Unit) {
 /** Per-tier Material icon — small visual cue alongside the displayName in the picker.
  *  Matches iOS's per-tier symbol convention (spec §4) using Material's closest analogues. */
 private fun qualityIcon(q: Quality): androidx.compose.ui.graphics.vector.ImageVector = when (q) {
-    Quality.K128 -> androidx.compose.material.icons.Icons.Filled.MusicNote
-    Quality.K320 -> androidx.compose.material.icons.Icons.Filled.GraphicEq
-    Quality.FLAC -> androidx.compose.material.icons.Icons.Filled.HighQuality
-    Quality.FLAC24, Quality.HIRES -> androidx.compose.material.icons.Icons.Filled.AutoAwesome
-    Quality.ATMOS, Quality.ATMOS_PLUS -> androidx.compose.material.icons.Icons.Filled.SurroundSound
-    Quality.MASTER -> androidx.compose.material.icons.Icons.Filled.Diamond
+    Quality.K128 -> Icons.Filled.MusicNote
+    Quality.K320 -> Icons.Filled.GraphicEq
+    Quality.FLAC -> Icons.Filled.HighQuality
+    Quality.FLAC24, Quality.HIRES -> Icons.Filled.AutoAwesome
+    Quality.ATMOS, Quality.ATMOS_PLUS -> Icons.Filled.SurroundSound
+    Quality.MASTER -> Icons.Filled.Diamond
 }

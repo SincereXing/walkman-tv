@@ -37,7 +37,10 @@ class BuiltInResolver(client: OkHttpClient) {
         Quality.K128 -> "128kmp3"
         Quality.K320 -> "320kmp3"
         Quality.FLAC -> "2000kflac"
-        Quality.FLAC24 -> "4000khires"
+        // Extended tiers (hires/atmos/atmos_plus/master) — Kuwo's anti.s convert_url path
+        // only knows up to 4000khires. Anything fancier maps to the same Hi-Res request and
+        // gets de-facto downgraded to 4000khires by the backend.
+        Quality.FLAC24, Quality.HIRES, Quality.ATMOS, Quality.ATMOS_PLUS, Quality.MASTER -> "4000khires"
     }
 
     private fun resolveKuwo(songmid: String, quality: Quality): ResolvedURL {
