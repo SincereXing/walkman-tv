@@ -93,7 +93,12 @@ class AppContainer(val appContext: Context) {
 
     fun initPlayback() {
         if (!::playbackController.isInitialized) {
-            playbackController = PlaybackController(appContext, sourceManager, lyricsFetcher)
+            playbackController = PlaybackController(
+                appContext,
+                sourceManager,
+                lyricsFetcher,
+                com.walkman.tv.playback.AudioSpecProbe(httpClient),
+            )
             playbackController.onTrackStarted = { track ->
                 appScope.launch { libraryStore.recordHistory(track) }
             }

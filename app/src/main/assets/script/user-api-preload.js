@@ -150,12 +150,16 @@ globalThis.lx_setup = (key, id, name, description, version, author, homepage, ra
     request: null,
   }
   const allSources = ['kw', 'kg', 'tx', 'wy', 'mg', 'local']
+  // Whitelist that gates the script's declared `qualitys` at init time. Spec §2: the old
+  // whitelist topped out at flac24bit, which silently truncated scripts that advertised hires
+  // / atmos / atmos_plus / master so the host could never request those tiers. Extended per
+  // the new lx-music-mobile release.
   const supportQualitys = {
-    kw: ['128k', '320k', 'flac', 'flac24bit'],
-    kg: ['128k', '320k', 'flac', 'flac24bit'],
-    tx: ['128k', '320k', 'flac', 'flac24bit'],
-    wy: ['128k', '320k', 'flac', 'flac24bit'],
-    mg: ['128k', '320k', 'flac', 'flac24bit'],
+    kw: ['128k', '320k', 'flac', 'flac24bit', 'hires', 'atmos', 'atmos_plus', 'master'],
+    kg: ['128k', '320k', 'flac', 'flac24bit', 'hires', 'atmos', 'atmos_plus', 'master'],
+    tx: ['128k', '320k', 'flac', 'flac24bit', 'hires', 'atmos', 'atmos_plus', 'master'],
+    wy: ['128k', '320k', 'flac', 'flac24bit', 'hires', 'atmos', 'atmos_plus', 'master'],
+    mg: ['128k', '320k', 'flac', 'flac24bit', 'hires', 'atmos', 'atmos_plus', 'master'],
     local: [],
   }
   const supportActions = {

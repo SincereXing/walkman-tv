@@ -177,27 +177,44 @@ class SourceManager(
     companion object {
         private const val TAG = "SourceManager"
 
-        /** Mirrors lx-music's getPlayQuality. TRY list is [flac24bit, flac, 320k]; 128k falls through. */
+        /**
+         * Pick the effective playback tier — spec §3.
+         *
+         * Walks [Quality.orderedHighToLow] starting at [preferred], returns the first tier
+         * that satisfies the per-tier eligibility rule. Falls through to [Quality.K128] —
+         * the universal floor — when nothing higher passes.
+         *
+         * Eligibility:
+         *  - Regular tiers (128k/320k/flac/flac24bit): script declares it AND the search
+         *    metadata listed it.
+         *  - Extended tiers (hires/atmos/atmos_plus/master): script declares it. Catalog
+         *    metadata almost never reports these, so the trackQs check is bypassed.
+         */
         fun pickPlayQuality(preferred: Quality, trackQs: Set<Quality>, scriptQs: Set<Quality>): Quality {
-            val tryList = listOf(Quality.FLAC24, Quality.FLAC, Quality.K320)
-            val startIdx = tryList.indexOf(preferred)
-            if (startIdx < 0) return Quality.K128
-            for (i in startIdx until tryList.size) {
-                val q = tryList[i]
-                if (trackQs.contains(q) && scriptQs.contains(q)) return q
+            val full = Quality.orderedHighToLow
+            val startIdx = full.indexOf(preferred).coerceAtLeast(0)
+            for (i in startIdx until full.size) {
+                val q = full[i]
+                if (q == Quality.K128) return Quality.K128 // always reachable
+                if (scriptQs.contains(q) && (q.isExtendedTier || trackQs.contains(q))) return q
             }
             return Quality.K128
         }
 
-        /** Cascade of qualities at or below [first] both track and script support, ending at 128k. */
+        /**
+         * Build the descending cascade from [first] to [Quality.K128] — spec §3 last paragraph.
+         * Each step uses the same per-tier rule as [pickPlayQuality]; 128k is appended
+         * unconditionally so we always have a final fallback to try.
+         */
         fun qualityCascade(first: Quality, trackQs: Set<Quality>, scriptQs: Set<Quality>): List<Quality> {
-            val full = listOf(Quality.FLAC24, Quality.FLAC, Quality.K320, Quality.K128)
-            val startIdx = full.indexOf(first)
-            if (startIdx < 0) return listOf(first)
+            val full = Quality.orderedHighToLow
+            val startIdx = full.indexOf(first).coerceAtLeast(0)
             val out = mutableListOf<Quality>()
             for (i in startIdx until full.size) {
                 val q = full[i]
-                if (q == Quality.K128 || (trackQs.contains(q) && scriptQs.contains(q))) out.add(q)
+                val eligible = q == Quality.K128 ||
+                    (scriptQs.contains(q) && (q.isExtendedTier || trackQs.contains(q)))
+                if (eligible) out.add(q)
             }
             return out.ifEmpty { listOf(first) }
         }

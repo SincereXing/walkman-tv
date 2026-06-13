@@ -60,6 +60,7 @@ class PlaybackController(
     context: Context,
     private val sources: SourceManager,
     private val lyricsFetcher: LyricsFetcher,
+    private val audioSpecProbe: AudioSpecProbe? = null,
 ) {
     /**
      * Real-time audio level (0..1), smoothed by the audio thread inside [AudioLevelProcessor].
@@ -70,6 +71,23 @@ class PlaybackController(
     private val _audioLevel = MutableStateFlow(0f)
     val audioLevel: StateFlow<Float> = _audioLevel.asStateFlow()
 
+    /** Last quality the cascade settled on for the current track — used by [onPlayerError]
+     *  to decide which tier to step down from on format-reject errors. */
+    private var lastAttemptedQuality: Quality? = null
+
+    /**
+     * Measured audio spec for the currently-playing URL (FLAC/MP3 codec params from the
+     * file header). Null while probing or when the format isn't recognised. Drives the
+     * badge ceiling-clamp in spec §6 and the small "FLAC 24bit/192kHz" caption next to it.
+     */
+    private val _audioSpec = MutableStateFlow<AudioSpec?>(null)
+    val audioSpec: StateFlow<AudioSpec?> = _audioSpec.asStateFlow()
+
+    /** Url currently being probed — used to discard late results when the user has switched
+     *  tracks before the probe returned. */
+    @Volatile private var probingUrl: String? = null
+    private var probeJob: Job? = null
+
     private val audioLevelProcessor = AudioLevelProcessor { level ->
         _audioLevel.value = level
     }
@@ -79,6 +97,19 @@ class PlaybackController(
     private val appContext = context.applicationContext
 
     private companion object {
+        /** ExoPlayer error codes that indicate the URL was fetched fine but the bytes can't be
+         *  decoded — i.e. a format-level rejection. Spec §3 calls for one-tier cascade here. */
+        val FORMAT_REJECT_CODES = setOf(
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FAILED,
+            PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+        )
+
         /**
          * Build the ExoPlayer with settings tuned for music playback on Android TV:
          *
@@ -200,6 +231,26 @@ class PlaybackController(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                // Format/codec rejections are the "encrypted .mgg" / "actually MP3 not FLAC" case
+                // from spec §3 — re-cascade from one tier below the current attempt. Network /
+                // unauthorized errors get surfaced as-is.
+                val isFormatReject = error.errorCode in FORMAT_REJECT_CODES
+                val current = lastAttemptedQuality
+                val track = _state.value.currentTrack
+                if (isFormatReject && track != null && current != null && current != Quality.K128) {
+                    val full = Quality.orderedHighToLow
+                    val idx = full.indexOf(current)
+                    val below = if (idx >= 0 && idx + 1 < full.size) full[idx + 1] else Quality.K128
+                    android.util.Log.w(
+                        "PlaybackController",
+                        "format reject @ ${current.key} (${error.errorCodeName}); re-cascading from ${below.key}",
+                    )
+                    _state.value = _state.value.copy(
+                        warning = "${current.displayName} 格式不支持，降级到 ${below.displayName}",
+                    )
+                    playAt(_state.value.index, qualityCap = below)
+                    return
+                }
                 _state.value = _state.value.copy(error = "播放失败: ${error.errorCodeName}", resolving = false)
             }
         })
@@ -239,12 +290,16 @@ class PlaybackController(
 
     fun playTrack(track: Track) = setQueue(listOf(track), 0, true)
 
-    fun playAt(index: Int) {
+    fun playAt(index: Int, qualityCap: Quality? = null) {
         val track = _state.value.queue.getOrNull(index) ?: return
+        // Fresh attempt (no cap) clears the last-attempted memory; cascade retries (cap != null)
+        // keep it so [onPlayerError] can keep stepping down if the new tier also rejects.
+        if (qualityCap == null) lastAttemptedQuality = null
+        val effectivePreferred = qualityCap ?: preferredQuality
         _state.value = _state.value.copy(index = index, resolving = true, error = null, warning = null, isMv = false)
         resolveJob?.cancel()
         resolveJob = scope.launch {
-            val resolved = runCatching { sources.resolveMusicURL(track, preferredQuality) }
+            val resolved = runCatching { sources.resolveMusicURL(track, effectivePreferred) }
             runCatching { playResolvedOrFail(track, resolved) }
                 .onFailure { e ->
                     android.util.Log.e("PlaybackController", "playAt crashed", e)
@@ -269,8 +324,27 @@ class PlaybackController(
                             .build(),
                     )
                     .build()
+                // Remember the tier so onPlayerError can re-cascade from one tier below if
+                // ExoPlayer rejects the file format.
+                lastAttemptedQuality = r.quality
                 player.setMediaItem(item)
                 player.prepare()
+                // Fire the file-header probe so the badge can later clamp the claimed tier
+                // down if the bytes turn out to be lower-grade than the script reported.
+                // Spec §5.4: clear current spec first, run async, validate URL is still
+                // current before publishing.
+                _audioSpec.value = null
+                probingUrl = r.url
+                probeJob?.cancel()
+                if (audioSpecProbe != null) {
+                    probeJob = scope.launch {
+                        val targetUrl = r.url
+                        val spec = audioSpecProbe.probe(targetUrl)
+                        if (spec != null && probingUrl == targetUrl) {
+                            _audioSpec.value = spec
+                        }
+                    }
+                }
                 // NOTE: MediaSessionService startup is currently disabled — Android 12+ kills
                 // the process via ForegroundServiceDidNotStartInTimeException if the service
                 // doesn't post a media notification within 5s, which races with our URL-resolve

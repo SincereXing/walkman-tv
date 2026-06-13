@@ -51,6 +51,7 @@ import com.walkman.tv.ui.components.TvPill
 import com.walkman.tv.ui.theme.AppColors
 import kotlinx.coroutines.launch
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
@@ -105,10 +106,26 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Section("播放音质") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Quality.entries.forEach { q ->
-                    TvPill(onClick = { scope.launch { appContainer.settingsStore.update { it.copy(preferredQuality = q) } } }, selected = settings.preferredQuality == q) {
-                        Text(q.displayName, fontSize = 13.sp)
+            // 8 tiers including extended (hires/atmos/master) — wrap so they fit on any TV width.
+            // Each pill carries a small icon to make the tier intent scannable in one glance.
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Quality.orderedHighToLow.reversed().forEach { q ->
+                    TvPill(
+                        onClick = { scope.launch { appContainer.settingsStore.update { it.copy(preferredQuality = q) } } },
+                        selected = settings.preferredQuality == q,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.tv.material3.Icon(
+                                imageVector = qualityIcon(q),
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(q.displayName, fontSize = 13.sp)
+                        }
                     }
                 }
             }
@@ -300,4 +317,15 @@ private fun ToggleRow(label: String, on: Boolean, onToggle: () -> Unit) {
             Text(if (on) "开" else "关", color = if (on) AppColors.AccentGreen else AppColors.TextMuted, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
+}
+
+/** Per-tier Material icon — small visual cue alongside the displayName in the picker.
+ *  Matches iOS's per-tier symbol convention (spec §4) using Material's closest analogues. */
+private fun qualityIcon(q: Quality): androidx.compose.ui.graphics.vector.ImageVector = when (q) {
+    Quality.K128 -> androidx.compose.material.icons.Icons.Filled.MusicNote
+    Quality.K320 -> androidx.compose.material.icons.Icons.Filled.GraphicEq
+    Quality.FLAC -> androidx.compose.material.icons.Icons.Filled.HighQuality
+    Quality.FLAC24, Quality.HIRES -> androidx.compose.material.icons.Icons.Filled.AutoAwesome
+    Quality.ATMOS, Quality.ATMOS_PLUS -> androidx.compose.material.icons.Icons.Filled.SurroundSound
+    Quality.MASTER -> androidx.compose.material.icons.Icons.Filled.Diamond
 }

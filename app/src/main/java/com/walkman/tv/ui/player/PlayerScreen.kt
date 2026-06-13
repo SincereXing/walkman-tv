@@ -209,9 +209,11 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(6.dp))
             ProgressBar(state.positionMs, state.durationMs, onSeek = { controller.seekTo(it) })
             Spacer(Modifier.height(14.dp))
+            val audioSpec by controller.audioSpec.collectAsState()
             TransportBar(
                 state = state,
                 love = love,
+                audioSpec = audioSpec,
                 onTogglePlay = { controller.togglePlay() },
                 onPrev = { controller.prev() },
                 onNext = { controller.next() },
@@ -473,6 +475,7 @@ private fun VinylGrooves(modifier: Modifier) {
 private fun TransportBar(
     state: com.walkman.tv.playback.PlaybackState,
     love: com.walkman.tv.data.model.Playlist,
+    audioSpec: com.walkman.tv.playback.AudioSpec?,
     onTogglePlay: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
@@ -512,7 +515,11 @@ private fun TransportBar(
                 onClick = onTuneClick,
                 modifier = Modifier.focusProperties { left = FocusRequester.Cancel },
             )
-            state.quality?.let {
+            // Badge shows the *measured* tier (claimed clamped down by AudioSpec) so a 16/44
+            // FLAC arriving from a hires request reads as "SQ", not "Hi-Res". Inline caption
+            // (e.g. "FLAC 24bit/192kHz") appears the moment probing completes.
+            val displayed = com.walkman.tv.playback.displayQuality(state.quality, audioSpec)
+            displayed?.let { q ->
                 TvPill(
                     onClick = { /* future: open a quality picker */ },
                     selected = true,
@@ -520,7 +527,15 @@ private fun TransportBar(
                     modifier = Modifier.focusProperties { right = repeatFocus },
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 ) {
-                    Text(it.displayName, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(q.badgeLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+                audioSpec?.let { spec ->
+                    Text(
+                        spec.displayText,
+                        color = AppColors.TextMuted,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
                 }
             }
         }
