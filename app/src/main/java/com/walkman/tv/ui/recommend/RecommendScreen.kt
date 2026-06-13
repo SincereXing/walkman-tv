@@ -1,6 +1,7 @@
 package com.walkman.tv.ui.recommend
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.draw.alpha
@@ -236,14 +237,16 @@ private fun RecommendGrid(
 
     Box(modifier = modifier) {
         androidx.compose.foundation.lazy.LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
+            // focusGroup() lets Compose auto-scroll the column when a child gains focus, so
+            // D-pad down through the rows brings the new focus into view instead of letting
+            // it disappear past the bottom edge.
+            modifier = Modifier.fillMaxSize().focusGroup(),
+            // Generous bottom padding so the stats row (and the focused row above it) sit clear
+            // of the screen bottom edge — fixes the "底部截断" issue where the last item was
+            // visually pinned to the bottom without breathing room.
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // Top stats — 已播 / 收藏 from libraryStore. Quick way to peek at counts without
-            // hopping over to the Library tab.
-            item { StatsRow(onNavigate) }
-
             when {
                 settings.homeSources.isEmpty() -> item { NoSourcesHint(onNavigate) }
                 home.isLoading && home.heroes.isEmpty() -> item { LoadingPlaceholder() }
@@ -276,6 +279,9 @@ private fun RecommendGrid(
                             BoardRow(home.boards) { board -> openBoard(board) }
                         }
                     }
+                    // Stats — 已播 / 收藏 — at the bottom of the discover content so the user
+                    // sees them after scrolling through the carousels.
+                    item { StatsRow(onNavigate) }
                 }
             }
         }
@@ -295,26 +301,66 @@ private fun RecommendGrid(
     }
 }
 
-/** Small horizontal row of stat tiles at the top of the discover page. */
+/** Horizontal row of two image-led stat tiles. Mirrors the iOS / RN TV recommend page
+ *  bottom stats — circular thumb on the left, label + big count on the right. */
 @Composable
 private fun StatsRow(onNavigate: (NavSection) -> Unit) {
     val played by appContainer.libraryStore.history.collectAsState()
     val loved by appContainer.libraryStore.love.collectAsState()
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-        StatTile("已播", played.tracks.size, Modifier.weight(1f)) { onNavigate(NavSection.Library) }
-        StatTile("收藏", loved.tracks.size, Modifier.weight(1f)) { onNavigate(NavSection.Library) }
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxWidth().height(72.dp),
+    ) {
+        StatTile(
+            label = "已播",
+            count = played.tracks.size,
+            picURL = StatThumbs.PLAYED,
+            modifier = Modifier.weight(1f),
+        ) { onNavigate(NavSection.Library) }
+        StatTile(
+            label = "收藏",
+            count = loved.tracks.size,
+            picURL = StatThumbs.LOVE,
+            modifier = Modifier.weight(1f),
+        ) { onNavigate(NavSection.Library) }
     }
 }
 
+/** Decorative Unsplash thumbs for the bottom stats row (same URLs as the pre-rewrite cards). */
+private object StatThumbs {
+    const val PLAYED = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&q=60"
+    const val LOVE   = "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=200&q=60"
+}
+
 @Composable
-private fun StatTile(label: String, count: Int, modifier: Modifier, onClick: () -> Unit) {
-    TvFocusable(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(12.dp)) {
+private fun StatTile(label: String, count: Int, picURL: String, modifier: Modifier, onClick: () -> Unit) {
+    TvFocusable(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(36.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxSize().padding(start = 8.dp, end = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(label, color = AppColors.TextSecondary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Text("$count", color = AppColors.TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Black)
+            Box(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(50))) {
+                AsyncImage(
+                    model = picURL,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                label,
+                color = AppColors.TextSecondary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "$count",
+                color = AppColors.TextPrimary,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+            )
         }
     }
 }
