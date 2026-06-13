@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Box
@@ -277,38 +280,63 @@ private fun SectionHeader(
 }
 
 /**
- * Hero carousel — auto-rotates every 6 s, resets the timer whenever the user changes index.
- * Spec §5 + §7.6 (auto-rotate pauses when offscreen — covered by LaunchedEffect lifecycle).
+ * Hero carousel — auto-rotates every 6 s **only when no one is focused on it**, so the user
+ * never gets the tile content swapped underneath them while they're aiming at the play button.
+ * Manual index changes (via the indicator dots) restart the dwell. Spec §5 + §7.6.
  */
 @Composable
 private fun HeroCarousel(heroes: List<HeroItem>, onSelect: (HeroItem) -> Unit) {
     var index by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
-    // Auto-cycle every 6s; key on heroes.size + manual changes so user input resets the dwell.
-    androidx.compose.runtime.LaunchedEffect(heroes.size, index) {
-        if (heroes.size > 1) {
+    var hasFocus by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val bannerFocus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+
+    // Default focus on first composition — spec §7.1 ("默认焦点落在 hero banner 上").
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        runCatching { bannerFocus.requestFocus() }
+    }
+
+    // Auto-cycle every 6s, but pause when the banner or any of its indicator dots have focus.
+    // Re-keys on hasFocus + index so manual changes reset the dwell.
+    androidx.compose.runtime.LaunchedEffect(heroes.size, index, hasFocus) {
+        if (heroes.size > 1 && !hasFocus) {
             kotlinx.coroutines.delay(6_000)
             index = (index + 1) % heroes.size
         }
     }
     val current = heroes.getOrNull(index) ?: return
 
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        HeroBanner(item = current, onClick = { onSelect(current) })
-        // Indicator: long capsule = active, dot = inactive (spec §5).
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { hasFocus = it.hasFocus },
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        HeroBanner(item = current, focusRequester = bannerFocus, onClick = { onSelect(current) })
+        // Indicator dots are focusable so users can manually switch via D-pad — spec §5
+        // ("指示器可点击/可聚焦切页"). Long capsule = active.
         if (heroes.size > 1) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
             ) {
                 heroes.forEachIndexed { i, _ ->
                     val active = i == index
-                    Box(
-                        modifier = Modifier
-                            .width(if (active) 22.dp else 6.dp)
-                            .height(5.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(if (active) AppColors.BrandPrimary else AppColors.TextMuted.copy(alpha = 0.45f)),
-                    )
+                    TvFocusable(
+                        onClick = { index = i },
+                        shape = RoundedCornerShape(50),
+                        // Slightly smaller scale so the dots don't dominate the row on focus.
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(if (active) 28.dp else 12.dp)
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (active) AppColors.BrandPrimary
+                                    else AppColors.TextMuted.copy(alpha = 0.5f),
+                                ),
+                        )
+                    }
                 }
             }
         }
@@ -316,12 +344,19 @@ private fun HeroCarousel(heroes: List<HeroItem>, onSelect: (HeroItem) -> Unit) {
 }
 
 @Composable
-private fun HeroBanner(item: HeroItem, onClick: () -> Unit) {
+private fun HeroBanner(
+    item: HeroItem,
+    focusRequester: androidx.compose.ui.focus.FocusRequester,
+    onClick: () -> Unit,
+) {
     val tint = item.source.tintColor()
     val accentEnd = tint.copy(alpha = 0.65f)
     TvFocusable(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(240.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp)
+            .focusRequester(focusRequester),
         shape = RoundedCornerShape(20.dp),
     ) {
         Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp))) {
@@ -351,12 +386,12 @@ private fun HeroBanner(item: HeroItem, onClick: () -> Unit) {
                     Text(
                         item.songlist.name,
                         color = Color.White,
-                        fontSize = 26.sp,
+                        fontSize = 30.sp,                          // §7.4: 3m TV bump
                         fontWeight = FontWeight.Black,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(8.dp))
                     val subParts = buildList {
                         add(item.source.displayName)
                         val plays = item.songlist.playCount
@@ -365,27 +400,27 @@ private fun HeroBanner(item: HeroItem, onClick: () -> Unit) {
                     Text(
                         subParts.joinToString(" · "),
                         color = Color.White.copy(alpha = 0.85f),
-                        fontSize = 14.sp,
+                        fontSize = 16.sp,                          // §7.4
                         fontWeight = FontWeight.Medium,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(16.dp))
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(50))
                             .background(Color.White)
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 Icons.Filled.PlayArrow,
                                 contentDescription = null,
                                 tint = tint,
-                                modifier = Modifier.size(16.dp),
+                                modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.width(4.dp))
-                            Text("立即播放", color = tint, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("立即播放", color = tint, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -407,9 +442,13 @@ private fun HeroBanner(item: HeroItem, onClick: () -> Unit) {
     }
 }
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun SonglistRow(items: List<com.walkman.tv.data.model.SonglistInfo>, onSelect: (com.walkman.tv.data.model.SonglistInfo) -> Unit) {
     androidx.compose.foundation.lazy.LazyRow(
+        // focusRestorer: D-pad away then back lands on the same card the user left from,
+        // not the first one — mirrors the TrackList behavior in the rest of the app.
+        modifier = Modifier.focusRestorer(),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 4.dp),
     ) {
@@ -425,9 +464,11 @@ private fun SonglistRow(items: List<com.walkman.tv.data.model.SonglistInfo>, onS
     }
 }
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun BoardRow(items: List<com.walkman.tv.data.model.BoardInfo>, onSelect: (com.walkman.tv.data.model.BoardInfo) -> Unit) {
     androidx.compose.foundation.lazy.LazyRow(
+        modifier = Modifier.focusRestorer(),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 4.dp),
     ) {
@@ -482,7 +523,7 @@ private fun AlbumCard(
         Text(
             title,
             color = AppColors.TextPrimary,
-            fontSize = 14.sp,
+            fontSize = 16.sp,                              // §7.4: 14sp → 16-18sp
             fontWeight = FontWeight.SemiBold,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -491,7 +532,7 @@ private fun AlbumCard(
             Text(
                 subtitle,
                 color = AppColors.TextMuted,
-                fontSize = 12.sp,
+                fontSize = 13.sp,                          // §7.4: 12sp → 13sp
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
