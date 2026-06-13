@@ -87,7 +87,11 @@ fun RootScreen(modifier: Modifier = Modifier) {
                 nowPlayingIsPlaying = navBits.isPlaying,
                 onOpenPlayer = { showPlayer = true },
             )
-            Box(modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
+            // weight(1f) — NOT fillMaxSize. fillMaxSize on a Column child requests the column's
+            // *total* height (ignoring siblings), so the bottom of this Box was being pushed
+            // past the screen by ~TopNav height and content there was clipped. weight gives
+            // exactly the remaining space after TopNav, which is what we actually want.
+            Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 18.dp)) {
                 val openPlayer = { showPlayer = true }
                 when (section) {
                     NavSection.Recommend -> RecommendScreen(onNavigate = { section = it }, onOpenPlayer = openPlayer)

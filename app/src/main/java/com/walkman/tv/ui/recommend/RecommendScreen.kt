@@ -241,10 +241,10 @@ private fun RecommendGrid(
             // D-pad down through the rows brings the new focus into view instead of letting
             // it disappear past the bottom edge.
             modifier = Modifier.fillMaxSize().focusGroup(),
-            // Generous bottom padding so the stats row (and the focused row above it) sit clear
-            // of the screen bottom edge — fixes the "底部截断" issue where the last item was
-            // visually pinned to the bottom without breathing room.
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 80.dp),
+            // Top padding: 8dp so the hero's 1.08x focused scale + 10dp accent glow has room
+            //   without getting clipped at the LazyColumn top edge.
+            // Bottom padding: 32dp so the stats row sits clear of the screen edge when focused.
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             when {
@@ -661,14 +661,18 @@ private fun AlbumCard(
 
 @Composable
 private fun LoadingPlaceholder() {
+    // No extra top padding here — the LazyColumn already has 8dp top contentPadding, and
+    // adding more would push the skeleton hero down so it doesn't align with the player
+    // cover on the left during the initial loading state.
     Column(
-        modifier = Modifier.fillMaxWidth().padding(top = 60.dp),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        // Hero placeholder
+        // Hero placeholder — match the real banner height so the skeleton occupies the same
+        // visual area when the data finally lands and replaces it.
         Box(
             modifier = Modifier
-                .fillMaxWidth().height(240.dp)
+                .fillMaxWidth().height(260.dp)
                 .clip(RoundedCornerShape(20.dp))
                 .background(AppColors.Card),
         )

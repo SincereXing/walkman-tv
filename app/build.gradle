@@ -21,8 +21,8 @@ android {
         applicationId "com.walkman.tv"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 11
-        versionName "1.1.9"
+        versionCode 13
+        versionName "1.2.1"
         // No abiFilters here on purpose — the `splits.abi` block below drives which ABIs are
         // included. We drop x86 (no TV hardware ships on that ABI) and keep arm64-v8a /
         // armeabi-v7a / x86_64 (the Android TV emulator).
