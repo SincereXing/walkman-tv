@@ -186,7 +186,48 @@ private class NetEaseSearch(private val http: CatalogHttp) : SongCatalog {
         val headers = mapOf("Referer" to "https://music.163.com/")
         val text = http.postForm("https://music.163.com/api/search/get", body, headers)
         val songs = JSONObject(text).optJSONObject("result")?.optJSONArray("songs") ?: return emptyList()
-        return (0 until songs.length()).mapNotNull { build(songs.optJSONObject(it)) }
+        val tracks = (0 until songs.length()).mapNotNull { build(songs.optJSONObject(it)) }
+        return enrichFromDetail(tracks)
+    }
+
+    /**
+     * `/api/search/get` doesn't return hMusic / sqMusic / hrMusic, mvid is always 0, and
+     * album.picUrl is often missing. Spec docs/netease-search-fix-tv.md §1: batch-call
+     * `/api/song/detail` once to fill those gaps. 30 ids per request is cheap.
+     */
+    private suspend fun enrichFromDetail(tracks: List<Track>): List<Track> {
+        if (tracks.isEmpty()) return tracks
+        val idList = tracks.joinToString(",") { it.songmid }
+        val ids = urlEncode("[$idList]")
+        val headers = mapOf("Referer" to "https://music.163.com/")
+        val text = runCatching {
+            http.getText("https://music.163.com/api/song/detail/?ids=$ids", headers)
+        }.getOrNull() ?: return tracks
+        val songs = runCatching { JSONObject(text).optJSONArray("songs") }.getOrNull() ?: return tracks
+
+        data class Detail(val picURL: String?, val qualities: List<Quality>, val mvId: String?)
+        val lookup = HashMap<String, Detail>()
+        for (i in 0 until songs.length()) {
+            val s = songs.optJSONObject(i) ?: continue
+            val id = s.opt("id")?.toString() ?: continue
+            // Correct NetEase semantics: hMusic = 320k, sqMusic = FLAC 16/44, hrMusic = Hi-Res 24bit.
+            // mMusic = 192k (no exact tier in our enum); bMusic/lMusic = 128k (handled by K128 floor).
+            val qs = mutableListOf(Quality.K128)
+            if (s.optJSONObject("hMusic") != null) qs.add(Quality.K320)
+            if (s.optJSONObject("sqMusic") != null) qs.add(Quality.FLAC)
+            if (s.optJSONObject("hrMusic") != null) qs.add(Quality.HIRES)
+            val pic = s.optJSONObject("album")?.optString("picUrl")?.ifEmpty { null }
+            val mvId = s.optLong("mvid").takeIf { it > 0 }?.toString()
+            lookup[id] = Detail(pic, qs, mvId)
+        }
+        return tracks.map { t ->
+            val d = lookup[t.songmid] ?: return@map t
+            t.copy(
+                picURL = d.picURL ?: t.picURL,
+                qualities = d.qualities,
+                extras = if (d.mvId != null) t.extras + ("mvId" to d.mvId) else t.extras,
+            )
+        }
     }
 
     private fun build(d: JSONObject?): Track? {
@@ -197,10 +238,14 @@ private class NetEaseSearch(private val http: CatalogHttp) : SongCatalog {
             .mapNotNull { artists?.optJSONObject(it)?.optString("name") }
             .filter { it.isNotEmpty() }.joinToString(" / ")
         val album = d.optJSONObject("album")
+        // /api/search/get doesn't return the quality fields — enrichFromDetail overwrites
+        // these. K128 floor here is a safety net for when the detail call fails so the song
+        // is still playable.
         val qs = mutableListOf(Quality.K128)
-        if (d.optJSONObject("mMusic") != null) qs.add(Quality.K320)
-        if (d.optJSONObject("hMusic") != null) qs.add(Quality.FLAC)
-        // NetEase MV: 'mvid' > 0 means an MV exists.
+        if (d.optJSONObject("hMusic") != null) qs.add(Quality.K320)
+        if (d.optJSONObject("sqMusic") != null) qs.add(Quality.FLAC)
+        if (d.optJSONObject("hrMusic") != null) qs.add(Quality.HIRES)
+        // mvid is always 0 from /api/search/get — the real one comes from enrichFromDetail.
         val extras = mutableMapOf<String, String>()
         d.optLong("mvid").takeIf { it > 0 }?.toString()?.let { extras["mvId"] = it }
         return Track(

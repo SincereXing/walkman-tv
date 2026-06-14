@@ -155,9 +155,13 @@ internal fun buildNetEaseTrack(d: JSONObject?): Track? {
         .mapNotNull { artists?.optJSONObject(it)?.optString("name") }
         .filter { it.isNotEmpty() }.joinToString(" / ")
     val album = d.optJSONObject("album")
+    // Correct NetEase field mappings — hMusic = 320k, sqMusic = FLAC 16/44, hrMusic = Hi-Res.
+    // /api/playlist/detail tracks ship these fields directly, so boards + songlists don't need
+    // the batch-detail enrich step that SearchCatalog uses.
     val qs = mutableListOf(Quality.K128)
-    if (d.optJSONObject("mMusic") != null) qs.add(Quality.K320)
-    if (d.optJSONObject("hMusic") != null) qs.add(Quality.FLAC)
+    if (d.optJSONObject("hMusic") != null) qs.add(Quality.K320)
+    if (d.optJSONObject("sqMusic") != null) qs.add(Quality.FLAC)
+    if (d.optJSONObject("hrMusic") != null) qs.add(Quality.HIRES)
     // NetEase MV: 'mvid' > 0 means an MV exists. Same field name in board / songlist / search.
     val extras = mutableMapOf<String, String>()
     d.optLong("mvid").takeIf { it > 0 }?.toString()?.let { extras["mvId"] = it }
