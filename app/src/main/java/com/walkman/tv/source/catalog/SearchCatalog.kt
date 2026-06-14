@@ -21,8 +21,11 @@ interface SongCatalog {
  */
 class Catalogs(private val http: CatalogHttp) : MusicSearcher {
 
+    // Migu intentionally not registered for search — the platform's authenticated search API
+    // requires a phone-bound login on top of the resourceinfo endpoint, so search-result
+    // playback rarely works. Boards + songlists still include it.
     private val services: Map<SourceID, SongCatalog> = listOf(
-        KuwoSearch(http), KugouSearch(http), NetEaseSearch(http), QQSearch(http), MiguSearch(http),
+        KuwoSearch(http), KugouSearch(http), NetEaseSearch(http), QQSearch(http),
     ).associateBy { it.source }
 
     fun serviceFor(source: SourceID): SongCatalog? = services[source]
@@ -69,7 +72,10 @@ private class KuwoSearch(private val http: CatalogHttp) : SongCatalog {
             "&strategy=2012&encoding=utf8&rformat=json&vermerge=1&mobi=1&issubtitle=1"
         val text = http.getText(url, mapOf("User-Agent" to "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15"))
         val abslist = runCatching { JSONObject(text).optJSONArray("abslist") }.getOrNull() ?: return emptyList()
-        return (0 until abslist.length()).mapNotNull { build(abslist.optJSONObject(it)) }
+        val tracks = (0 until abslist.length()).mapNotNull { build(abslist.optJSONObject(it)) }
+        // Kuwo's search response doesn't carry cover URLs — fetch them in parallel via the same
+        // artistpicserver endpoint Boards already uses, so the search row has a thumbnail.
+        return fillKuwoCovers(http, tracks)
     }
 
     private fun build(d: JSONObject?): Track? {
@@ -182,7 +188,10 @@ private class NetEaseSearch(private val http: CatalogHttp) : SongCatalog {
 
     override suspend fun search(keyword: String, page: Int): List<Track> {
         val offset = (page - 1) * 30
-        val body = urlEncode("s=$keyword&type=1&offset=$offset&limit=30")
+        // Only the *values* get URL-encoded — encoding the entire form string was double-encoding
+        // the `=` and `&` separators, so the server received `s%3D...` and couldn't parse it
+        // (silent empty result). Encode each value individually instead.
+        val body = "s=${urlEncode(keyword)}&type=1&offset=$offset&limit=30"
         val headers = mapOf("Referer" to "https://music.163.com/")
         val text = http.postForm("https://music.163.com/api/search/get", body, headers)
         val songs = JSONObject(text).optJSONObject("result")?.optJSONArray("songs") ?: return emptyList()
@@ -327,6 +336,7 @@ private class QQSearch(private val http: CatalogHttp) : SongCatalog {
 
 // MARK: - Migu (app.c.nf.migu.cn) -------------------------------------------------------------
 
+@Suppress("unused") // intentionally not registered in Catalogs.services — see the note there
 private class MiguSearch(private val http: CatalogHttp) : SongCatalog {
     override val source = SourceID.MG
 
