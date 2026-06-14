@@ -21,8 +21,8 @@ android {
         applicationId "com.walkman.tv"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 13
-        versionName "1.2.1"
+        versionCode 14
+        versionName "1.2.2"
         // No abiFilters here on purpose — the `splits.abi` block below drives which ABIs are
         // included. We drop x86 (no TV hardware ships on that ABI) and keep arm64-v8a /
         // armeabi-v7a / x86_64 (the Android TV emulator).
@@ -139,10 +139,9 @@ dependencies {
 
     // Image loading
     implementation "io.coil-kt:coil-compose:2.7.0"
-    // BlurTransformation for the full-screen player's cover backdrop. Separate artifact from
-    // coil-compose; runs on RenderScript under the hood so it works back to API 21 — including
-    // 32-bit ARM TVs on Android 10.
-    implementation "io.coil-kt:coil-transformations:2.7.0"
+    // (BlurTransformation is provided locally in ui/components/BlurTransformation.kt — the
+    // io.coil-kt:coil-transformations artifact stopped publishing at 2.x and isn't synced with
+    // coil-compose 2.7.0.)
 
     // Networking + serialization + coroutines
     implementation "com.squareup.okhttp3:okhttp:4.12.0"

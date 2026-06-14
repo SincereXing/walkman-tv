@@ -882,7 +882,7 @@ private fun CoverBackdrop(picURL: String?) {
             coil.compose.AsyncImage(
                 model = coil.request.ImageRequest.Builder(context)
                     .data(picURL)
-                    .transformations(coil.transform.BlurTransformation(context, radius = 25f, sampling = 2f))
+                    .transformations(com.walkman.tv.ui.components.BlurTransformation(context, radius = 25f, sampling = 2f))
                     .crossfade(400)
                     .build(),
                 contentDescription = null,
