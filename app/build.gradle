@@ -139,6 +139,10 @@ dependencies {
 
     // Image loading
     implementation "io.coil-kt:coil-compose:2.7.0"
+    // BlurTransformation for the full-screen player's cover backdrop. Separate artifact from
+    // coil-compose; runs on RenderScript under the hood so it works back to API 21 — including
+    // 32-bit ARM TVs on Android 10.
+    implementation "io.coil-kt:coil-transformations:2.7.0"
 
     // Networking + serialization + coroutines
     implementation "com.squareup.okhttp3:okhttp:4.12.0"

@@ -149,11 +149,11 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         return
     }
 
-    Box(
-        modifier = modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(AppColors.BgPanel, AppColors.BgDeep)),
-        ),
-    ) {
+    Box(modifier = modifier.fillMaxSize().background(AppColors.BgDeep)) {
+        // Frosted-glass backdrop: the current cover blurred + heavily darkened so it tints
+        // the whole player without competing with the vinyl / lyrics / transport bar.
+        CoverBackdrop(picURL = track?.picURL)
+
         if (track == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("暂无播放", color = AppColors.TextSecondary)
@@ -854,6 +854,62 @@ private fun QueueRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+    }
+}
+
+// ============== Cover backdrop =================================================================
+
+/**
+ * Frosted-glass background for the full-screen player. Three layers stacked over [AppColors.BgDeep]:
+ *
+ *  1. Current cover loaded via Coil with [coil.transform.BlurTransformation] — radius 25 (the
+ *     RenderScript hard cap), sampling 2 (downscale by 2 before blurring) for speed. Runs on
+ *     RenderScript so it works back to API 21 — including the 32-bit ARM TVs on Android 10
+ *     where [Modifier.blur] (API 31+) isn't available.
+ *  2. A heavy black wash (alpha ≈ 0.55) — pulls the blurred image down so the player's
+ *     foreground content (vinyl, lyrics, transport bar) keeps its contrast.
+ *  3. A top + bottom vertical gradient toward [AppColors.BgDeep] so the corners read clean
+ *     for the TopNav-adjacent area and the transport row.
+ *
+ * Falls back to the previous BgPanel→BgDeep gradient when no cover is available.
+ */
+@Composable
+private fun CoverBackdrop(picURL: String?) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (!picURL.isNullOrBlank()) {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            coil.compose.AsyncImage(
+                model = coil.request.ImageRequest.Builder(context)
+                    .data(picURL)
+                    .transformations(coil.transform.BlurTransformation(context, radius = 25f, sampling = 2f))
+                    .crossfade(400)
+                    .build(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            )
+            // Darken so the foreground content keeps WCAG-ish contrast.
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)))
+            // Edge gradient — keeps top + bottom strips close to pure BgDeep so transport / text
+            // never sit on a high-saturation patch of the blurred cover.
+            Box(
+                modifier = Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        0f to AppColors.BgDeep.copy(alpha = 0.55f),
+                        0.28f to Color.Transparent,
+                        0.72f to Color.Transparent,
+                        1f to AppColors.BgDeep.copy(alpha = 0.72f),
+                    ),
+                ),
+            )
+        } else {
+            // No cover yet — original look stays.
+            Box(
+                modifier = Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(listOf(AppColors.BgPanel, AppColors.BgDeep)),
+                ),
+            )
         }
     }
 }
