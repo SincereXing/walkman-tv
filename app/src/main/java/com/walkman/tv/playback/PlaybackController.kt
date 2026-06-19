@@ -75,6 +75,10 @@ class PlaybackController(
      *  to decide which tier to step down from on format-reject errors. */
     private var lastAttemptedQuality: Quality? = null
 
+    /** Number of consecutive network-error retries on the current track. Reset to 0 on a
+     *  successful play, on a fresh playAt(), or once we've given up and skipped to next. */
+    private var networkRetryCount: Int = 0
+
     /**
      * Measured audio spec for the currently-playing URL (FLAC/MP3 codec params from the
      * file header). Null while probing or when the format isn't recognised. Drives the
@@ -109,6 +113,19 @@ class PlaybackController(
             PlaybackException.ERROR_CODE_DECODING_FAILED,
             PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
         )
+
+        /** ExoPlayer error codes that point at transient network issues — connection drops,
+         *  flaky CDN, expired URL on a paused track, etc. Worth retrying a few times before
+         *  giving up on the track. */
+        val NETWORK_RETRY_CODES = setOf(
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+            PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
+            PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+        )
+        const val MAX_NETWORK_RETRIES = 3
 
         /**
          * Build the ExoPlayer with settings tuned for music playback on Android TV:
@@ -248,9 +265,54 @@ class PlaybackController(
                     _state.value = _state.value.copy(
                         warning = "${current.displayName} 格式不支持，降级到 ${below.displayName}",
                     )
+                    networkRetryCount = 0 // format error path — separate from the network counter
                     playAt(_state.value.index, qualityCap = below)
                     return
                 }
+                // Transient network — exponential backoff retry up to MAX_NETWORK_RETRIES.
+                // After that, advance to next so playback doesn't dead-stop the queue.
+                if (error.errorCode in NETWORK_RETRY_CODES && track != null) {
+                    if (networkRetryCount < MAX_NETWORK_RETRIES) {
+                        networkRetryCount++
+                        val delayMs = 500L shl (networkRetryCount - 1) // 500ms / 1s / 2s
+                        android.util.Log.w(
+                            "PlaybackController",
+                            "network error (${error.errorCodeName}); retry ${networkRetryCount}/$MAX_NETWORK_RETRIES in ${delayMs}ms",
+                        )
+                        _state.value = _state.value.copy(
+                            warning = "网络不稳定，正在重试 ($networkRetryCount/$MAX_NETWORK_RETRIES)…",
+                            resolving = true,
+                            error = null,
+                        )
+                        val trackIdAtRetry = track.id
+                        scope.launch {
+                            kotlinx.coroutines.delay(delayMs)
+                            // Guard: user may have skipped to a different track during the delay.
+                            if (_state.value.currentTrack?.id == trackIdAtRetry) {
+                                playAt(_state.value.index, qualityCap = lastAttemptedQuality)
+                            }
+                        }
+                        return
+                    }
+                    // Retries exhausted — surface as a passing warning and skip to next.
+                    android.util.Log.w(
+                        "PlaybackController",
+                        "network retries exhausted on ${track.name}; skipping to next",
+                    )
+                    networkRetryCount = 0
+                    _state.value = _state.value.copy(
+                        warning = "网络不稳定，已跳过 ${track.name}",
+                        resolving = false,
+                        error = null,
+                    )
+                    scope.launch {
+                        kotlinx.coroutines.delay(400)
+                        next()
+                    }
+                    return
+                }
+                // Other errors — surface and stop.
+                networkRetryCount = 0
                 _state.value = _state.value.copy(error = "播放失败: ${error.errorCodeName}", resolving = false)
             }
         })
@@ -292,9 +354,13 @@ class PlaybackController(
 
     fun playAt(index: Int, qualityCap: Quality? = null) {
         val track = _state.value.queue.getOrNull(index) ?: return
-        // Fresh attempt (no cap) clears the last-attempted memory; cascade retries (cap != null)
-        // keep it so [onPlayerError] can keep stepping down if the new tier also rejects.
-        if (qualityCap == null) lastAttemptedQuality = null
+        // Fresh attempt (no cap) clears the last-attempted memory + the network retry counter;
+        // cascade retries (cap != null) keep them so [onPlayerError] can keep stepping down or
+        // continue counting retries within the same logical attempt.
+        if (qualityCap == null) {
+            lastAttemptedQuality = null
+            networkRetryCount = 0
+        }
         val effectivePreferred = qualityCap ?: preferredQuality
         _state.value = _state.value.copy(index = index, resolving = true, error = null, warning = null, isMv = false)
         resolveJob?.cancel()
@@ -327,6 +393,9 @@ class PlaybackController(
                 // Remember the tier so onPlayerError can re-cascade from one tier below if
                 // ExoPlayer rejects the file format.
                 lastAttemptedQuality = r.quality
+                // Successful resolve + setMediaItem → reset the network retry counter so the
+                // next track gets a fresh budget.
+                networkRetryCount = 0
                 player.setMediaItem(item)
                 player.prepare()
                 // Fire the file-header probe so the badge can later clamp the claimed tier
