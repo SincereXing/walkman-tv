@@ -90,6 +90,23 @@ class AppContainer(val appContext: Context) {
     val settingsStore: SettingsStore by lazy { SettingsStore(appContext) }
     val playbackSnapshotStore: PlaybackSnapshotStore by lazy { PlaybackSnapshotStore(appContext) }
     val searchHistoryStore: SearchHistoryStore by lazy { SearchHistoryStore(appContext) }
+    val coverCache: com.walkman.tv.data.store.CoverCache by lazy {
+        com.walkman.tv.data.store.CoverCache(appContext)
+    }
+    val downloadStore: com.walkman.tv.data.store.DownloadStore by lazy {
+        com.walkman.tv.data.store.DownloadStore(appContext)
+    }
+    val localFolderStore: com.walkman.tv.data.store.LocalFolderStore by lazy {
+        com.walkman.tv.data.store.LocalFolderStore(appContext)
+    }
+    val downloadCoordinator: com.walkman.tv.playback.download.DownloadCoordinator by lazy {
+        com.walkman.tv.playback.download.DownloadCoordinator(
+            store = downloadStore,
+            sources = sourceManager,
+            coverCache = coverCache,
+            http = httpClient,
+        )
+    }
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -132,6 +149,9 @@ class AppContainer(val appContext: Context) {
             }.launchIn(appScope)
             scriptStore.loadAll()
             searchHistoryStore.load()
+            coverCache.loadAll()
+            downloadStore.loadAll()
+            localFolderStore.loadAll()
 
             // Restore last session's queue + index + playing state. Run after scripts load so
             // any custom-source needed to resolve URLs is ready.
