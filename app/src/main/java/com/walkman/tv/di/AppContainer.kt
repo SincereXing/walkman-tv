@@ -108,6 +108,13 @@ class AppContainer(val appContext: Context) {
             lyricsFetcher = lyricsFetcher,
         )
     }
+    val localMusicStore: com.walkman.tv.playback.local.LocalMusicStore by lazy {
+        com.walkman.tv.playback.local.LocalMusicStore(
+            context = appContext,
+            localFolderStore = localFolderStore,
+            coverCache = coverCache,
+        )
+    }
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -121,6 +128,11 @@ class AppContainer(val appContext: Context) {
             )
             playbackController.onTrackStarted = { track ->
                 appScope.launch { libraryStore.recordHistory(track) }
+            }
+            // Local-first URL resolver — downloads + SAF imports skip the online cascade.
+            playbackController.localUrlResolver = { track ->
+                downloadStore.localFile(track.id)?.toURI()?.toString()
+                    ?: localMusicStore.fileUri(track)?.toString()
             }
         }
     }

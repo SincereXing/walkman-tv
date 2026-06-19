@@ -80,6 +80,16 @@ class PlaybackController(
     private var networkRetryCount: Int = 0
 
     /**
+     * Optional local-first URL resolver. When set, [playAt] checks it before going to
+     * [SourceManager]. Wired by [com.walkman.tv.di.AppContainer] to point at
+     * DownloadStore.localFile + LocalMusicStore.fileUri so already-downloaded songs and
+     * SAF-imported tracks skip the online resolve cascade entirely.
+     *
+     * Returns a uri string (`file://...`, `content://...`) or null if the track isn't local.
+     */
+    var localUrlResolver: ((Track) -> String?)? = null
+
+    /**
      * Measured audio spec for the currently-playing URL (FLAC/MP3 codec params from the
      * file header). Null while probing or when the format isn't recognised. Drives the
      * badge ceiling-clamp in spec §6 and the small "FLAC 24bit/192kHz" caption next to it.
@@ -365,7 +375,21 @@ class PlaybackController(
         _state.value = _state.value.copy(index = index, resolving = true, error = null, warning = null, isMv = false)
         resolveJob?.cancel()
         resolveJob = scope.launch {
-            val resolved = runCatching { sources.resolveMusicURL(track, effectivePreferred) }
+            // Local fast-path: downloaded tracks + SAF-imported tracks skip the online cascade.
+            // localUrlResolver is set up at AppContainer init time.
+            val localUrl = runCatching { localUrlResolver?.invoke(track) }.getOrNull()
+            val resolved = if (localUrl != null) {
+                Result.success(
+                    ResolvedTrack(
+                        url = localUrl,
+                        origin = ResolveOrigin.LocalFile,
+                        quality = track.qualities.firstOrNull() ?: effectivePreferred,
+                        warning = null,
+                    ),
+                )
+            } else {
+                runCatching { sources.resolveMusicURL(track, effectivePreferred) }
+            }
             runCatching { playResolvedOrFail(track, resolved) }
                 .onFailure { e ->
                     android.util.Log.e("PlaybackController", "playAt crashed", e)

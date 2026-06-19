@@ -151,6 +151,9 @@ dependencies {
     // Persistence
     implementation "androidx.datastore:datastore-preferences:1.1.1"
 
+    // SAF tree-Uri walker for local-folder import
+    implementation "androidx.documentfile:documentfile:1.0.1"
+
     // Custom-source JS engine (kept from the RN app)
     implementation "wang.harlon.quickjs:wrapper-android:2.4.0"
 
