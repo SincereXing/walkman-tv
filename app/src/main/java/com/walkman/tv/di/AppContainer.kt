@@ -105,6 +105,7 @@ class AppContainer(val appContext: Context) {
             sources = sourceManager,
             coverCache = coverCache,
             http = httpClient,
+            lyricsFetcher = lyricsFetcher,
         )
     }
 

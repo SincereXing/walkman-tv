@@ -7,6 +7,7 @@ import com.walkman.tv.data.model.Quality
 import com.walkman.tv.data.model.Track
 import com.walkman.tv.data.store.CoverCache
 import com.walkman.tv.data.store.DownloadStore
+import com.walkman.tv.playback.LyricsFetcher
 import com.walkman.tv.source.SourceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +38,7 @@ class DownloadCoordinator(
     private val sources: SourceManager,
     private val coverCache: CoverCache,
     private val http: OkHttpClient,
+    private val lyricsFetcher: LyricsFetcher? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val downloader = FileDownloader(http)
@@ -169,14 +171,64 @@ class DownloadCoordinator(
         android.util.Log.w("DownloadCoordinator", "download $trackID failed: $message")
     }
 
-    /** Tag-writer / cover-cache integration — placeholder until Phase 5. */
-    private suspend fun onCompleted(@Suppress("UNUSED_PARAMETER") track: Track,
-                                    @Suppress("UNUSED_PARAMETER") dest: File) {
-        // Phase 5 will:
-        //   - fetch hi-res cover (track.picURL or details.hiResCoverURL)
-        //   - put bytes in coverCache
-        //   - resolve lyrics via LyricsFetcher → LRC
-        //   - dispatch to MP3TagWriter or FLACTagWriter based on dest.extension
+    /**
+     * Fire-and-forget metadata embedding. Spec §4. Runs on the download scope so it doesn't
+     * block subsequent downloads. Any failure here only logs — the song is already on disk
+     * and playable; tagging is a nice-to-have.
+     */
+    private fun onCompleted(track: Track, dest: File) {
+        scope.launch {
+            runCatching {
+                // 1) Cover bytes — prefer track.picURL (catalogs already chose the best URL).
+                val coverBytes = fetchCover(track.picURL)
+                if (coverBytes != null && coverBytes.isNotEmpty()) {
+                    coverCache.put(track.id, coverBytes)
+                }
+                // 2) Lyrics (best-effort via the same fetcher playback uses).
+                val lyricsText = try {
+                    val lines = lyricsFetcher?.fetch(track) ?: emptyList()
+                    LrcSerializer.serialize(lines)
+                } catch (_: Exception) { null }
+
+                // 3) Dispatch by extension.
+                val ext = dest.extension.lowercase()
+                when (ext) {
+                    "mp3" -> Mp3TagWriter.write(
+                        file = dest,
+                        title = track.name,
+                        artist = track.singer,
+                        album = track.albumName,
+                        lyrics = lyricsText,
+                        cover = coverBytes,
+                    )
+                    "flac" -> FlacTagWriter.write(
+                        file = dest,
+                        title = track.name,
+                        artist = track.singer,
+                        album = track.albumName,
+                        lyrics = lyricsText,
+                        cover = coverBytes,
+                    )
+                    else -> { /* m4a / wav / ogg — no writer yet, skip silently */ }
+                }
+            }.onFailure { e ->
+                android.util.Log.w("DownloadCoordinator", "tag-write failed for ${track.id}: ${e.message}")
+            }
+        }
+    }
+
+    private fun fetchCover(url: String?): ByteArray? {
+        if (url.isNullOrBlank()) return null
+        return runCatching {
+            val req = okhttp3.Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0")
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@use null
+                resp.body?.bytes()
+            }
+        }.getOrNull()
     }
 
     private fun deleteFile(record: DownloadRecord) {
