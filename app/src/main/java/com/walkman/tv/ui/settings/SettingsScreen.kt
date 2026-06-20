@@ -30,7 +30,10 @@ import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -67,6 +70,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     var url by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<String?>(null) }
     var showQr by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<com.walkman.tv.data.model.UserScript?>(null) }
 
     // System file picker (SAF) for .js scripts.
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -231,11 +235,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     scripts.forEach { s ->
-                        // Two side-by-side focusables (toggle area + delete pill). Previously
-                        // the delete TvPill was nested *inside* the outer TvFocusable, which
-                        // meant the row's clickable Surface absorbed focus and D-pad navigation
-                        // never reached the inner pill — clicking the row always toggled
-                        // enabled/disabled but the delete button was unreachable.
+                        // Two side-by-side focusables (toggle area + delete pill). The delete
+                        // path used to live on the UI's rememberCoroutineScope, which gets
+                        // cancelled when the user navigates away mid-click; route through
+                        // appContainer.appScope so the unload + filter + persist sequence
+                        // can't be interrupted between steps.
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -261,14 +265,31 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                             }
                             Spacer(Modifier.width(12.dp))
                             TvPill(
-                                onClick = { scope.launch { appContainer.scriptStore.remove(s.id) } },
+                                onClick = { pendingDelete = s },
                                 accent = AppColors.Danger,
-                            ) { Text("删除", fontSize = 12.sp) }
+                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+                            ) { Text("删除", fontSize = 13.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
                 }
             }
         }
+    }
+
+    pendingDelete?.let { target ->
+        DeleteScriptConfirmDialog(
+            scriptName = target.name,
+            onCancel = { pendingDelete = null },
+            onConfirm = {
+                // Use the appScope (process-lived) so the unload + filter + persist sequence
+                // can't be cancelled by leaving Settings mid-delete.
+                pendingDelete = null
+                appContainer.appScope.launch {
+                    appContainer.scriptStore.remove(target.id)
+                    status = "已删除：${target.name}"
+                }
+            },
+        )
     }
 
     if (showQr) {
@@ -359,4 +380,55 @@ private fun qualityIcon(q: Quality): androidx.compose.ui.graphics.vector.ImageVe
     Quality.FLAC24, Quality.HIRES -> Icons.Filled.AutoAwesome
     Quality.ATMOS, Quality.ATMOS_PLUS -> Icons.Filled.SurroundSound
     Quality.MASTER -> Icons.Filled.Diamond
+}
+
+@Composable
+private fun DeleteScriptConfirmDialog(
+    scriptName: String,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val cancelFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { cancelFocus.requestFocus() } }
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onCancel,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            modifier = Modifier
+                .width(360.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(AppColors.BgPanel)
+                .padding(horizontal = 24.dp, vertical = 22.dp),
+        ) {
+            Text("删除自定义音源", color = AppColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "确定要删除「$scriptName」吗？删除后需要重新导入才能使用。",
+                color = AppColors.TextSecondary,
+                fontSize = 14.sp,
+            )
+            Spacer(Modifier.height(22.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+            ) {
+                TvPill(
+                    onClick = onCancel,
+                    focusRequester = cancelFocus,
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp),
+                ) {
+                    Text("取消", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+                TvPill(
+                    onClick = onConfirm,
+                    selected = true,
+                    accent = AppColors.Danger,
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp),
+                ) {
+                    Text("确定", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
 }

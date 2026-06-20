@@ -59,6 +59,7 @@ fun PlaylistPickerDialog(track: Track, onDismiss: () -> Unit) {
     val userLists by appContainer.libraryStore.userLists.collectAsState()
     val all = listOf(love) + userLists
     var showCreate by remember { mutableStateOf(false) }
+    var showDownload by remember { mutableStateOf(false) }
 
     // Focus the row most-likely useful first — the first playlist the track is *not* in (so
     // tapping just adds, no toggle dance), falling back to row 0.
@@ -158,6 +159,12 @@ fun PlaylistPickerDialog(track: Track, onDismiss: () -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             ) {
                 TvPill(
+                    onClick = { showDownload = true },
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text("下载", fontSize = 13.sp)
+                }
+                TvPill(
                     onClick = { showCreate = true },
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 ) {
@@ -176,6 +183,10 @@ fun PlaylistPickerDialog(track: Track, onDismiss: () -> Unit) {
                 }
             }
         }
+    }
+
+    if (showDownload) {
+        DownloadDialog(track = track, onDismiss = { showDownload = false })
     }
 
     if (showCreate) {

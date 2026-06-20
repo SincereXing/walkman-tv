@@ -18,7 +18,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items as lazyItems
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -73,13 +76,24 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
     val userLists by appContainer.libraryStore.userLists.collectAsState()
 
     var tab by remember { mutableStateOf(TAB_FAVORITES) }
+    var showLocalImport by remember { mutableStateOf(false) }
+    val downloadStore = appContainer.downloadStore
+    val downloadFolders by downloadStore.folders.collectAsState()
+    val downloadRecords by downloadStore.records.collectAsState()
+    val downloadProgress by downloadStore.progress.collectAsState()
     var detailId by remember { mutableStateOf<String?>(null) }
     var showCreate by remember { mutableStateOf(false) }
 
     // Per-tab FocusRequester so D-pad Up from the lower area lands on the *active* tab,
     // not some other geometric candidate. Reused across recompositions.
-    val tabFocus = remember { mapOf(TAB_FAVORITES to FocusRequester(), TAB_HISTORY to FocusRequester()) }
-    val activeTabFocus = tabFocus[tab]!!
+    val tabFocus = remember {
+        mapOf(
+            TAB_FAVORITES to FocusRequester(),
+            TAB_HISTORY to FocusRequester(),
+            TAB_DOWNLOADED to FocusRequester(),
+        )
+    }
+    val activeTabFocus = tabFocus[tab] ?: tabFocus[TAB_FAVORITES]!!
 
     // Back closes the playlist detail; otherwise falls through to the parent (which jumps to
     // Recommend / shows the exit dialog).
@@ -108,6 +122,19 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
                 focusRequester = tabFocus[TAB_HISTORY],
             ) {
                 Text("播放历史 (${history.tracks.size})", fontSize = 13.sp)
+            }
+            TvPill(
+                onClick = { tab = TAB_DOWNLOADED; detailId = null },
+                selected = tab == TAB_DOWNLOADED,
+                focusRequester = tabFocus[TAB_DOWNLOADED],
+            ) {
+                Text("已下载 (${downloadStore.completedCount})", fontSize = 13.sp)
+            }
+            TvPill(
+                onClick = { showLocalImport = true },
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 7.dp),
+            ) {
+                Text("+ 导入本地", fontSize = 12.sp)
             }
         }
         Spacer(Modifier.padding(top = 6.dp))
@@ -142,7 +169,21 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
                     )
                 }
             }
+            TAB_DOWNLOADED -> DownloadedTab(
+                folders = downloadFolders,
+                records = downloadRecords,
+                progress = downloadProgress,
+                onPlay = { tracks, idx ->
+                    com.walkman.tv.ui.playList(tracks, idx)
+                    onOpenPlayer()
+                },
+                upFocus = activeTabFocus,
+            )
         }
+    }
+
+    if (showLocalImport) {
+        com.walkman.tv.ui.components.LocalImportDialog(onDismiss = { showLocalImport = false })
     }
 
     if (showCreate) {
@@ -160,6 +201,7 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
 
 private const val TAB_FAVORITES = "fav"
 private const val TAB_HISTORY = "history"
+private const val TAB_DOWNLOADED = "downloaded"
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -385,5 +427,160 @@ private fun PlaylistDetailPane(
                 playList(playlist.tracks, idx); onOpenPlayer()
             }
         }
+    }
+}
+
+/**
+ * Downloaded-songs tab: per-folder sections (default "默认" + any user-created), each shows a
+ * TrackList of completed records belonging to that folder. Active downloads (in progress + failed)
+ * surface at the top so the user sees the running progress + can retry/cancel without hunting.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun DownloadedTab(
+    folders: List<com.walkman.tv.data.model.DownloadFolder>,
+    records: Map<String, com.walkman.tv.data.model.DownloadRecord>,
+    progress: Map<String, Float>,
+    onPlay: (List<com.walkman.tv.data.model.Track>, Int) -> Unit,
+    upFocus: FocusRequester,
+) {
+    val active = records.values.filter { it.status == com.walkman.tv.data.model.DownloadStatus.DOWNLOADING }
+    val failed = records.values.filter { it.status == com.walkman.tv.data.model.DownloadStatus.FAILED }
+
+    androidx.compose.foundation.lazy.LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .focusProperties {
+                exit = { dir -> if (dir == FocusDirection.Up) upFocus else FocusRequester.Default }
+            },
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
+    ) {
+        if (active.isNotEmpty()) {
+            item {
+                Text("进行中", color = AppColors.AccentGreen, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+            lazyItems(active) { rec ->
+                ActiveDownloadRow(rec, progress[rec.track.id] ?: 0f)
+            }
+        }
+        if (failed.isNotEmpty()) {
+            item {
+                Text("失败", color = AppColors.Danger, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+            lazyItems(failed) { rec ->
+                FailedDownloadRow(rec)
+            }
+        }
+        val nowId = appContainer.playbackController.state.collectAsState().value.currentTrack?.id
+        folders.forEach { folder ->
+            val folderTracks = folder.trackIDs.mapNotNull { id ->
+                records[id]?.takeIf { it.status == com.walkman.tv.data.model.DownloadStatus.COMPLETED }
+            }
+            if (folderTracks.isNotEmpty()) {
+                item {
+                    Text(
+                        "${folder.name}  (${folderTracks.size})",
+                        color = AppColors.TextPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                val tracks = folderTracks.map { it.track }
+                itemsIndexed(tracks) { idx, track ->
+                    com.walkman.tv.ui.components.TrackRow(
+                        track = track,
+                        index = idx,
+                        nowPlaying = track.id == nowId,
+                        onClick = { onPlay(tracks, idx) },
+                    )
+                }
+            }
+        }
+        if (active.isEmpty() && failed.isEmpty() && folders.none { f ->
+            f.trackIDs.any { id ->
+                records[id]?.status == com.walkman.tv.data.model.DownloadStatus.COMPLETED
+            }
+        }) {
+            item {
+                EmptyHint("还没有下载，去搜索 / 歌单里长按歌曲下载", Modifier.fillMaxSize())
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActiveDownloadRow(
+    rec: com.walkman.tv.data.model.DownloadRecord,
+    progress: Float,
+) {
+    val pct = (progress * 100).toInt()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(AppColors.Card)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(rec.track.name, color = AppColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text("${rec.track.singer} · ${rec.quality.displayName}", color = AppColors.TextMuted, fontSize = 11.sp, maxLines = 1)
+            Spacer(Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(AppColors.BgDeep),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress.coerceIn(0f, 1f))
+                        .height(2.dp)
+                        .background(AppColors.AccentGreen),
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Text("$pct%", color = AppColors.AccentGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(12.dp))
+        TvPill(
+            onClick = { appContainer.downloadCoordinator.cancel(rec.track.id) },
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        ) { Text("取消", fontSize = 12.sp) }
+    }
+}
+
+@Composable
+private fun FailedDownloadRow(rec: com.walkman.tv.data.model.DownloadRecord) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(AppColors.Card)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(rec.track.name, color = AppColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(
+                rec.errorMessage ?: "下载失败",
+                color = AppColors.Danger,
+                fontSize = 11.sp,
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        TvPill(
+            onClick = { appContainer.downloadCoordinator.retry(rec.track.id) },
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        ) { Text("重试", fontSize = 12.sp) }
+        Spacer(Modifier.width(8.dp))
+        TvPill(
+            onClick = { appContainer.downloadCoordinator.removeDownload(rec.track.id) },
+            accent = AppColors.Danger,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        ) { Text("删除", fontSize = 12.sp) }
     }
 }

@@ -116,7 +116,9 @@ class AppContainer(val appContext: Context) {
         )
     }
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    /** Process-lived scope used for operations that mustn't be cancelled by a UI navigation
+     *  (e.g. settings → script delete). Public so screens can opt into it explicitly. */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     fun initPlayback() {
         if (!::playbackController.isInitialized) {
