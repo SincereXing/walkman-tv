@@ -18,11 +18,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,6 +59,9 @@ fun LocalImportDialog(onDismiss: () -> Unit) {
     var importing by remember { mutableStateOf(false) }
     var doneMessage by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    // Default focus = 选择文件夹 since that's step 1 in the flow.
+    val pickerFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { pickerFocus.requestFocus() } }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -94,6 +99,7 @@ fun LocalImportDialog(onDismiss: () -> Unit) {
             Spacer(Modifier.size(6.dp))
             TvPill(
                 onClick = { launcher.launch(null) },
+                focusRequester = pickerFocus,
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
             ) {
                 Text(

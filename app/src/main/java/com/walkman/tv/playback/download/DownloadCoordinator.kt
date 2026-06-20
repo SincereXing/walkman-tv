@@ -9,6 +9,7 @@ import com.walkman.tv.data.store.CoverCache
 import com.walkman.tv.data.store.DownloadStore
 import com.walkman.tv.playback.LyricsFetcher
 import com.walkman.tv.source.SourceManager
+import com.walkman.tv.source.catalog.CatalogHttp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -39,9 +40,11 @@ class DownloadCoordinator(
     private val coverCache: CoverCache,
     private val http: OkHttpClient,
     private val lyricsFetcher: LyricsFetcher? = null,
+    catalogHttp: CatalogHttp? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val downloader = FileDownloader(http)
+    private val detailFetcher: TrackDetailFetcher? = catalogHttp?.let { TrackDetailFetcher(it) }
     /** Per-track download jobs so [cancel] can interrupt cleanly. */
     private val jobs = ConcurrentHashMap<String, Job>()
 
@@ -124,15 +127,15 @@ class DownloadCoordinator(
 
     private suspend fun runDownload(track: Track, quality: Quality) = coroutineScope {
         try {
-            // Future TrackDetailFetcher hook — for now no trackNumber/coverHiRes lookup.
-            val details = async { null /* TrackDetails? */ }
-
+            // Spec §3.3: kick the detail lookup in parallel with the URL resolve so the
+            // track-number can land in the filename and the hi-res cover is ready by the time
+            // we embed metadata.
+            val detailsTask = async { detailFetcher?.fetch(track) }
             val resolved = sources.resolveMusicURL(track, quality)
-            details.await()
+            val details = detailsTask.await()
 
             val ext = pickExtension(resolved.url, quality)
-            // Currently no trackNumber — defaults to "Artist/Album - Title.ext".
-            var fileName = relativePath(track, ext, trackNumber = null)
+            var fileName = relativePath(track, ext, trackNumber = details?.trackNumber)
             fileName = uniquify(
                 fileName,
                 primaryDir = store.downloadRoot,
@@ -149,8 +152,7 @@ class DownloadCoordinator(
                 onSuccess = {
                     store.updateRecord(track.id) { it.copy(status = DownloadStatus.COMPLETED) }
                     store.publishProgress(track.id, null)
-                    // Metadata embedding hook — Phase 5 will write tags + cover here.
-                    onCompleted(track, dest)
+                    onCompleted(track, dest, details)
                 },
                 onFailure = { fail(track.id, it.message ?: "下载失败") },
             )
@@ -176,11 +178,12 @@ class DownloadCoordinator(
      * block subsequent downloads. Any failure here only logs — the song is already on disk
      * and playable; tagging is a nice-to-have.
      */
-    private fun onCompleted(track: Track, dest: File) {
+    private fun onCompleted(track: Track, dest: File, details: com.walkman.tv.data.model.TrackDetails?) {
         scope.launch {
             runCatching {
-                // 1) Cover bytes — prefer track.picURL (catalogs already chose the best URL).
-                val coverBytes = fetchCover(track.picURL)
+                // 1) Cover bytes — prefer the detail-fetcher's hi-res URL, fall back to track.picURL.
+                val coverUrl = details?.hiResCoverURL?.takeIf { it.isNotBlank() } ?: track.picURL
+                val coverBytes = fetchCover(coverUrl)
                 if (coverBytes != null && coverBytes.isNotEmpty()) {
                     coverCache.put(track.id, coverBytes)
                 }
@@ -198,6 +201,12 @@ class DownloadCoordinator(
                         title = track.name,
                         artist = track.singer,
                         album = track.albumName,
+                        trackNumber = details?.trackNumber,
+                        trackTotal = details?.trackTotal,
+                        year = details?.releaseDate,
+                        genre = details?.genre,
+                        publisher = details?.company,
+                        albumArtist = details?.albumArtist,
                         lyrics = lyricsText,
                         cover = coverBytes,
                     )
@@ -206,10 +215,16 @@ class DownloadCoordinator(
                         title = track.name,
                         artist = track.singer,
                         album = track.albumName,
+                        trackNumber = details?.trackNumber,
+                        trackTotal = details?.trackTotal,
+                        year = details?.releaseDate,
+                        genre = details?.genre,
+                        publisher = details?.company,
+                        albumArtist = details?.albumArtist,
                         lyrics = lyricsText,
                         cover = coverBytes,
                     )
-                    else -> { /* m4a / wav / ogg — no writer yet, skip silently */ }
+                    else -> { /* m4a / wav / ogg — no writer yet, cover cache still good */ }
                 }
             }.onFailure { e ->
                 android.util.Log.w("DownloadCoordinator", "tag-write failed for ${track.id}: ${e.message}")

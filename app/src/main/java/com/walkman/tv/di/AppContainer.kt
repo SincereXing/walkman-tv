@@ -55,7 +55,7 @@ class AppContainer(val appContext: Context) {
         appContext.assets.open("script/user-api-preload.js").use { it.readBytes().toString(Charsets.UTF_8) }
     }
 
-    private val catalogHttp by lazy { CatalogHttp(httpClient) }
+    val catalogHttp by lazy { CatalogHttp(httpClient) }
 
     val catalogs by lazy { Catalogs(catalogHttp) }
     val boards by lazy { Boards(catalogHttp) }
@@ -106,6 +106,7 @@ class AppContainer(val appContext: Context) {
             coverCache = coverCache,
             http = httpClient,
             lyricsFetcher = lyricsFetcher,
+            catalogHttp = catalogHttp,
         )
     }
     val localMusicStore: com.walkman.tv.playback.local.LocalMusicStore by lazy {

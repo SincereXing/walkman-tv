@@ -16,12 +16,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,6 +64,10 @@ fun DownloadDialog(track: Track, onDismiss: () -> Unit) {
     }
     var selectedFolderId by remember { mutableStateOf(DownloadFolder.DEFAULT_ID) }
     var showNewFolder by remember { mutableStateOf(false) }
+    // Default focus = 开始下载. Skips the cancel button so a single OK press is the primary
+    // action. User can D-pad up to the quality / folder picker if they want to change defaults.
+    val startFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { startFocus.requestFocus() } }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -155,6 +161,7 @@ fun DownloadDialog(track: Track, onDismiss: () -> Unit) {
                         onDismiss()
                     },
                     selected = true,
+                    focusRequester = startFocus,
                     contentPadding = PaddingValues(horizontal = 22.dp, vertical = 8.dp),
                 ) {
                     Text("开始下载", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)

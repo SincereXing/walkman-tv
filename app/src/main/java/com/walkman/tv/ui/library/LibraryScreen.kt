@@ -515,54 +515,56 @@ private fun ActiveDownloadRow(
     progress: Float,
 ) {
     val pct = (progress * 100).toInt()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(AppColors.Card)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    // Whole row is one focusable; OK = cancel (the only action while downloading). Cleaner
+    // D-pad path than two side-by-side focusables for a transient state.
+    com.walkman.tv.ui.components.TvFocusable(
+        onClick = { appContainer.downloadCoordinator.cancel(rec.track.id) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(rec.track.name, color = AppColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Text("${rec.track.singer} · ${rec.quality.displayName}", color = AppColors.TextMuted, fontSize = 11.sp, maxLines = 1)
-            Spacer(Modifier.height(4.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(AppColors.BgDeep),
-            ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(rec.track.name, color = AppColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text("${rec.track.singer} · ${rec.quality.displayName}", color = AppColors.TextMuted, fontSize = 11.sp, maxLines = 1)
+                Spacer(Modifier.height(4.dp))
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(progress.coerceIn(0f, 1f))
+                        .fillMaxWidth()
                         .height(2.dp)
-                        .background(AppColors.AccentGreen),
-                )
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(AppColors.BgDeep),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress.coerceIn(0f, 1f))
+                            .height(2.dp)
+                            .background(AppColors.AccentGreen),
+                    )
+                }
             }
+            Spacer(Modifier.width(12.dp))
+            Text("$pct%", color = AppColors.AccentGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(12.dp))
+            Text("OK 取消", color = AppColors.TextMuted, fontSize = 11.sp)
         }
-        Spacer(Modifier.width(12.dp))
-        Text("$pct%", color = AppColors.AccentGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.width(12.dp))
-        TvPill(
-            onClick = { appContainer.downloadCoordinator.cancel(rec.track.id) },
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-        ) { Text("取消", fontSize = 12.sp) }
     }
 }
 
 @Composable
 private fun FailedDownloadRow(rec: com.walkman.tv.data.model.DownloadRecord) {
+    // Two side-by-side focusable actions (retry / delete) because they're distinct outcomes —
+    // wrap the row in a Row of [text-block | retry-pill | delete-pill] so D-pad Right traverses
+    // them naturally.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(AppColors.Card)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
             Text(rec.track.name, color = AppColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             Text(
                 rec.errorMessage ?: "下载失败",
@@ -571,16 +573,15 @@ private fun FailedDownloadRow(rec: com.walkman.tv.data.model.DownloadRecord) {
                 maxLines = 1,
             )
         }
-        Spacer(Modifier.width(12.dp))
         TvPill(
             onClick = { appContainer.downloadCoordinator.retry(rec.track.id) },
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-        ) { Text("重试", fontSize = 12.sp) }
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        ) { Text("重试", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
         Spacer(Modifier.width(8.dp))
         TvPill(
             onClick = { appContainer.downloadCoordinator.removeDownload(rec.track.id) },
             accent = AppColors.Danger,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-        ) { Text("删除", fontSize = 12.sp) }
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        ) { Text("删除", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
     }
 }
