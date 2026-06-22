@@ -14,3 +14,8 @@ local.properties
 /keystore.properties
 /app/release.keystore
 *.jks
+
+# Editor / tooling / local debug — keep local, don't commit
+.claude/
+.vscode/
+.dbg/
