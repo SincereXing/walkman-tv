@@ -22,6 +22,17 @@
 
 ---
 
+## 📥 下载安装
+
+前往 **[Releases](../../releases/latest)** 下载最新 APK，用 U 盘 / `adb install` 装到 Android TV 即可。
+
+- **`walkman-tv-x.y.z-universal-release.apk`** —— 通用包，不确定机型就下它（体积稍大，任意 ABI 都能装）。
+- **`walkman-tv-x.y.z-arm64-v8a-release.apk`** —— 现代电视/盒子（2018 年后，64 位 ARM）专用，体积更小。
+
+> 安装：`adb connect <电视IP>` 后 `adb install walkman-tv-x.y.z-universal-release.apk`；或把 APK 拷到 U 盘，用电视上的「文件管理器 / 安装包安装器」打开。首次安装需在系统设置里允许「未知来源 / 安装未知应用」。
+
+---
+
 ## ✨ 功能特性
 
 | 分区 | 说明 |
