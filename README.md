@@ -3,6 +3,8 @@
 > 一款面向大屏、遥控器友好的 **原生 Android TV 音乐播放器**，使用 **Kotlin + Jetpack Compose for TV** 编写。
 
 <p>
+  <a href="https://github.com/SincereXing/walkman-tv/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/SincereXing/walkman-tv?display_name=tag&label=release&color=3DDC84"></a>
+  <a href="https://github.com/SincereXing/walkman-tv/releases"><img alt="downloads" src="https://img.shields.io/github/downloads/SincereXing/walkman-tv/total?label=downloads&color=3DDC84"></a>
   <img alt="platform" src="https://img.shields.io/badge/platform-Android%20TV-3DDC84">
   <img alt="language" src="https://img.shields.io/badge/Kotlin-Compose%20for%20TV-7F52FF">
   <img alt="minSdk" src="https://img.shields.io/badge/minSdk-21-blue">
@@ -27,7 +29,9 @@
 前往 **[Releases](../../releases/latest)** 下载最新 APK，用 U 盘 / `adb install` 装到 Android TV 即可。
 
 - **`walkman-tv-x.y.z-universal-release.apk`** —— 通用包，不确定机型就下它（体积稍大，任意 ABI 都能装）。
-- **`walkman-tv-x.y.z-arm64-v8a-release.apk`** —— 现代电视/盒子（2018 年后，64 位 ARM）专用，体积更小。
+- **`walkman-tv-x.y.z-arm64-v8a-release.apk`** —— 现代电视/盒子（2018 年后，64 位 ARM），体积更小。
+- **`walkman-tv-x.y.z-armeabi-v7a-release.apk`** —— 老的 32 位 ARM 机型。
+- **`walkman-tv-x.y.z-x86_64-release.apk`** —— x86 盒子 / Android TV 模拟器。
 
 > 安装：`adb connect <电视IP>` 后 `adb install walkman-tv-x.y.z-universal-release.apk`；或把 APK 拷到 U 盘，用电视上的「文件管理器 / 安装包安装器」打开。首次安装需在系统设置里允许「未知来源 / 安装未知应用」。
 
