@@ -23,8 +23,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -51,13 +54,15 @@ import com.walkman.tv.ui.theme.AppColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** One focusable track row: index, cover, name/singer, quality badge + source chip. */
+/** One focusable track row: index, cover, name/singer, quality badge + source chip.
+ *  [downloaded] shows a small green ✓ download icon — opt-in, only set by 我的列表. */
 @Composable
 fun TrackRow(
     track: Track,
     index: Int,
     modifier: Modifier = Modifier,
     nowPlaying: Boolean = false,
+    downloaded: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
@@ -98,6 +103,15 @@ fun TrackRow(
                 )
             }
             Spacer(Modifier.width(8.dp))
+            if (downloaded) {
+                androidx.tv.material3.Icon(
+                    imageVector = Icons.Filled.Download,
+                    contentDescription = "已下载",
+                    tint = AppColors.AccentGreen,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+            }
             if (track.hasMv) {
                 MvBadge()
                 Spacer(Modifier.width(6.dp))
@@ -179,8 +193,26 @@ fun TrackList(
     nowPlayingId: String? = null,
     contentPadding: PaddingValues = PaddingValues(vertical = 8.dp),
     initialFocus: Boolean = false,
+    showDownloadedBadge: Boolean = false,
     onPlay: (index: Int) -> Unit,
 ) {
+    // Only 我的列表 opts in. Collect once here (shared StateFlows) and derive the set of tracks
+    // that are downloaded AND whose file is actually present, so rows don't each subscribe.
+    // Reactive: a finished download, a removed download, or a play-time "文件缺失" discovery all
+    // update the badges. (A missing file drops out of this set → its ✓ disappears.)
+    val downloadedIds: Set<String> = if (showDownloadedBadge) {
+        val records by com.walkman.tv.ui.appContainer.downloadStore.records.collectAsState()
+        val missing by com.walkman.tv.ui.appContainer.downloadStore.missingDownloads.collectAsState()
+        remember(records, missing) {
+            records.values
+                .filter { it.status == com.walkman.tv.data.model.DownloadStatus.COMPLETED }
+                .map { it.track.id }
+                .filter { it !in missing }
+                .toSet()
+        }
+    } else {
+        emptySet()
+    }
     val listState = rememberLazyListState()
     val firstFocus = remember { FocusRequester() }
     // Holds a FocusRequester for the row most recently clicked-to-play. When the player
@@ -254,6 +286,7 @@ fun TrackList(
                 index = index,
                 modifier = rowModifier,
                 nowPlaying = track.id == nowPlayingId,
+                downloaded = track.id in downloadedIds,
                 onLongClick = { pickerTrack = track },
                 onClick = {
                     lastClickedIndex = index

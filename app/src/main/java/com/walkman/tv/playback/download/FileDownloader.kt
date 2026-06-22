@@ -1,6 +1,7 @@
 package com.walkman.tv.playback.download
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -30,46 +31,7 @@ internal class FileDownloader(private val http: OkHttpClient) {
         runCatching {
             dest.parentFile?.mkdirs()
             tmp.delete()
-
-            val req = Request.Builder()
-                .url(url)
-                .header("User-Agent", MOBILE_UA)
-                .build()
-            http.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    throw IOException("HTTP ${resp.code}")
-                }
-                val body = resp.body ?: throw IOException("empty body")
-                val totalBytes = body.contentLength().takeIf { it > 0 } ?: -1L
-                var written = 0L
-                var lastReported = 0L
-                var lastPctReported = 0f
-
-                body.byteStream().use { input ->
-                    tmp.outputStream().use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        while (true) {
-                            ensureActive()
-                            val n = input.read(buffer)
-                            if (n <= 0) break
-                            output.write(buffer, 0, n)
-                            written += n
-                            if (totalBytes > 0) {
-                                val pct = written.toFloat() / totalBytes.toFloat()
-                                val now = System.currentTimeMillis()
-                                val timeOk = now - lastReported >= PROGRESS_MIN_INTERVAL_MS
-                                val pctOk = pct - lastPctReported >= PROGRESS_MIN_DELTA
-                                if (timeOk || pctOk) {
-                                    onProgress(pct.coerceIn(0f, 1f))
-                                    lastReported = now
-                                    lastPctReported = pct
-                                }
-                            }
-                        }
-                        output.flush()
-                    }
-                }
-            }
+            tmp.outputStream().use { output -> streamTo(url, output, onProgress) }
             // Final 100% tick + atomic rename.
             onProgress(1f)
             if (!tmp.renameTo(dest)) {
@@ -81,6 +43,68 @@ internal class FileDownloader(private val http: OkHttpClient) {
         }.onFailure { e ->
             tmp.delete()
             if (e is CancellationException) throw e
+        }
+    }
+
+    /**
+     * Download straight into an arbitrary [OutputStream] (e.g. a ByteArrayOutputStream for SAF
+     * downloads, which we tag in memory then write once to the picked folder). Does not close
+     * [out] — the caller owns it.
+     */
+    suspend fun download(
+        url: String,
+        out: java.io.OutputStream,
+        onProgress: (Float) -> Unit,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            streamTo(url, out, onProgress)
+            onProgress(1f)
+            Unit
+        }.onFailure { e ->
+            if (e is CancellationException) throw e
+        }
+    }
+
+    /** Shared streaming core: GET [url], copy the body to [output] with throttled progress.
+     *  Does not close [output]. */
+    private fun CoroutineScope.streamTo(
+        url: String,
+        output: java.io.OutputStream,
+        onProgress: (Float) -> Unit,
+    ) {
+        val req = Request.Builder()
+            .url(url)
+            .header("User-Agent", MOBILE_UA)
+            .build()
+        http.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
+            val body = resp.body ?: throw IOException("empty body")
+            val totalBytes = body.contentLength().takeIf { it > 0 } ?: -1L
+            var written = 0L
+            var lastReported = 0L
+            var lastPctReported = 0f
+            body.byteStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    ensureActive()
+                    val n = input.read(buffer)
+                    if (n <= 0) break
+                    output.write(buffer, 0, n)
+                    written += n
+                    if (totalBytes > 0) {
+                        val pct = written.toFloat() / totalBytes.toFloat()
+                        val now = System.currentTimeMillis()
+                        val timeOk = now - lastReported >= PROGRESS_MIN_INTERVAL_MS
+                        val pctOk = pct - lastPctReported >= PROGRESS_MIN_DELTA
+                        if (timeOk || pctOk) {
+                            onProgress(pct.coerceIn(0f, 1f))
+                            lastReported = now
+                            lastPctReported = pct
+                        }
+                    }
+                }
+                output.flush()
+            }
         }
     }
 

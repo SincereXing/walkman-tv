@@ -36,22 +36,46 @@ internal object Mp3TagWriter {
         cover: ByteArray? = null,
         coverMime: String = "image/jpeg",
     ): Result<Unit> = runCatching {
-        val original = file.readBytes()
+        val tagged = tag(
+            file.readBytes(), title, artist, album,
+            trackNumber, trackTotal, year, genre, publisher, albumArtist,
+            lyrics, cover, coverMime,
+        )
+        val tmp = File(file.parentFile, file.name + ".tagging")
+        tmp.outputStream().use { it.write(tagged) }
+        if (!tmp.renameTo(file)) {
+            tmp.copyTo(file, overwrite = true)
+            tmp.delete()
+        }
+    }
+
+    /** Pure transform: take the original MP3 bytes, return a copy with our ID3v2.4 tag in front
+     *  (existing head tag stripped). Lets callers write the result anywhere (File or SAF). */
+    fun tag(
+        original: ByteArray,
+        title: String?,
+        artist: String?,
+        album: String?,
+        trackNumber: Int? = null,
+        trackTotal: Int? = null,
+        year: String? = null,
+        genre: String? = null,
+        publisher: String? = null,
+        albumArtist: String? = null,
+        lyrics: String? = null,
+        cover: ByteArray? = null,
+        coverMime: String = "image/jpeg",
+    ): ByteArray {
         val audioStart = detectExistingTagSize(original)
         val newTag = buildTag(
             title, artist, album,
             trackNumber, trackTotal, year, genre, publisher, albumArtist,
             lyrics, cover, coverMime,
         )
-        val tmp = File(file.parentFile, file.name + ".tagging")
-        tmp.outputStream().use { os ->
-            os.write(newTag)
-            os.write(original, audioStart, original.size - audioStart)
-        }
-        if (!tmp.renameTo(file)) {
-            tmp.copyTo(file, overwrite = true)
-            tmp.delete()
-        }
+        val out = ByteArrayOutputStream(newTag.size + (original.size - audioStart))
+        out.write(newTag)
+        out.write(original, audioStart, original.size - audioStart)
+        return out.toByteArray()
     }
 
     /** Return the byte offset where the actual audio frames start (= existing tag size, or 0). */

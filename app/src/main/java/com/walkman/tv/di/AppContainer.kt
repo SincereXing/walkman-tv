@@ -133,9 +133,22 @@ class AppContainer(val appContext: Context) {
                 appScope.launch { libraryStore.recordHistory(track) }
             }
             // Local-first URL resolver — downloads + SAF imports skip the online cascade.
+            // Doubles as the play-time file check: if a COMPLETED download's file is gone we
+            // flag it missing (badge disappears, 已下载 tab shows 文件缺失) and fall through to
+            // the online cascade; if it's there we clear any stale missing flag.
             playbackController.localUrlResolver = { track ->
-                downloadStore.localFile(track.id)?.toURI()?.toString()
-                    ?: localMusicStore.fileUri(track)?.toString()
+                // Resolves both File downloads and SAF-exported downloads to a playable Uri.
+                val playable = downloadStore.localPlayableUri(track.id)
+                when {
+                    playable != null -> {
+                        downloadStore.markPresent(track.id)
+                        playable
+                    }
+                    else -> {
+                        if (downloadStore.isDownloaded(track.id)) downloadStore.markMissing(track.id)
+                        localMusicStore.fileUri(track)?.toString()
+                    }
+                }
             }
         }
     }
@@ -162,6 +175,9 @@ class AppContainer(val appContext: Context) {
             settingsStore.settings.onEach { s ->
                 playbackController.preferredQuality = s.preferredQuality
                 sourceManager.fallbackEnabled = s.fallbackEnabled
+                downloadStore.configuredRoot = s.customDownloadDir?.let { java.io.File(it) }
+                downloadStore.downloadTreeUri = s.customDownloadTreeUri?.let { runCatching { android.net.Uri.parse(it) }.getOrNull() }
+                downloadCoordinator.setMaxConcurrent(s.maxConcurrentDownloads)
             }.launchIn(appScope)
             scriptStore.loadAll()
             searchHistoryStore.load()

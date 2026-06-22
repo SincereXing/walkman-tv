@@ -93,6 +93,8 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     val state by controller.state.collectAsState()
     val lyrics by controller.lyrics.collectAsState()
     val love by appContainer.libraryStore.love.collectAsState()
+    val settings by appContainer.settingsStore.settings.collectAsState()
+    val lyricSize = settings.lyricSize
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     var showMvQueue by remember { mutableStateOf(false) }
@@ -184,6 +186,7 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                     LyricPane(
                         lyrics,
                         state.positionMs,
+                        lyricSize = lyricSize,
                         modifier = Modifier.fillMaxWidth().weight(1f),
                     )
                 }
@@ -660,6 +663,7 @@ private fun ProgressBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Un
 private fun LyricPane(
     lyrics: List<com.walkman.tv.playback.LyricLine>,
     positionMs: Long,
+    lyricSize: com.walkman.tv.data.store.LyricSize,
     modifier: Modifier = Modifier,
 ) {
     if (lyrics.isEmpty()) {
@@ -691,7 +695,7 @@ private fun LyricPane(
                 Text(
                     line.text,
                     color = if (isActive) AppColors.LyricActive else AppColors.TextSecondary,
-                    fontSize = if (isActive) 22.sp else 15.sp,
+                    fontSize = if (isActive) lyricSize.activeSp.sp else lyricSize.inactiveSp.sp,
                     fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.alpha(a),
@@ -700,7 +704,7 @@ private fun LyricPane(
                     Text(
                         it,
                         color = if (isActive) AppColors.LyricActive.copy(alpha = 0.7f) else AppColors.TextMuted,
-                        fontSize = 12.sp,
+                        fontSize = lyricSize.translationSp.sp,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.alpha(a),
                     )

@@ -29,6 +29,14 @@ data class DownloadRecord(
     val folderID: String,
     /** Original error message if [status] is [DownloadStatus.FAILED]. */
     var errorMessage: String? = null,
+    /** Absolute path of the download root this file was saved under. null ⇒ the legacy/default
+     *  app-scoped Music dir. Stored per-record so changing the download directory in settings
+     *  never orphans already-downloaded files — each one keeps resolving under its own root. */
+    var baseDir: String? = null,
+    /** When the file was exported into a user-picked SAF folder, this is the resulting document
+     *  Uri (content://…). Non-null ⇒ the file lives there (not under [baseDir]); playback +
+     *  existence checks + deletion go through the ContentResolver. */
+    var safUri: String? = null,
 )
 
 @Serializable

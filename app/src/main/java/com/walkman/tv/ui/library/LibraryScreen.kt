@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,6 +79,7 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
 
     var tab by remember { mutableStateOf(TAB_FAVORITES) }
     var showLocalImport by remember { mutableStateOf(false) }
+    var showSonglistImport by remember { mutableStateOf(false) }
     val downloadStore = appContainer.downloadStore
     val downloadFolders by downloadStore.folders.collectAsState()
     val downloadRecords by downloadStore.records.collectAsState()
@@ -129,6 +132,12 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
                 focusRequester = tabFocus[TAB_DOWNLOADED],
             ) {
                 Text("已下载 (${downloadStore.completedCount})", fontSize = 13.sp)
+            }
+            TvPill(
+                onClick = { showSonglistImport = true },
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 7.dp),
+            ) {
+                Text("+ 导入歌单", fontSize = 12.sp)
             }
             TvPill(
                 onClick = { showLocalImport = true },
@@ -185,6 +194,9 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
     if (showLocalImport) {
         com.walkman.tv.ui.components.LocalImportDialog(onDismiss = { showLocalImport = false })
     }
+    if (showSonglistImport) {
+        com.walkman.tv.ui.components.SonglistImportDialog(onDismiss = { showSonglistImport = false })
+    }
 
     if (showCreate) {
         com.walkman.tv.ui.components.PlaylistNameDialog(
@@ -231,6 +243,7 @@ private fun HistoryTab(
                     exit = { dir -> if (dir == FocusDirection.Up) upFocus else FocusRequester.Default }
                 },
             nowPlayingId = nowId,
+            showDownloadedBadge = true,
         ) { idx ->
             playList(history.tracks, idx); onOpenPlayer()
         }
@@ -362,6 +375,7 @@ private fun PlaylistDetailPane(
 ) {
     val playFocus = remember { FocusRequester() }
     LaunchedEffect(playlist.id) { runCatching { playFocus.requestFocus() } }
+    var showBatchDownload by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
@@ -389,6 +403,22 @@ private fun PlaylistDetailPane(
                             Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("播放全部", fontSize = 12.sp)
+                        }
+                    }
+                    if (playlist.tracks.isNotEmpty()) {
+                        TvPill(
+                            onClick = { showBatchDownload = true },
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Filled.Download,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text("下载全部", fontSize = 12.sp)
+                            }
                         }
                     }
                     TvPill(onClick = onBack, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
@@ -423,10 +453,19 @@ private fun PlaylistDetailPane(
                         exit = { dir -> if (dir == FocusDirection.Up) playFocus else FocusRequester.Default }
                     },
                 nowPlayingId = nowId,
+                showDownloadedBadge = true,
             ) { idx ->
                 playList(playlist.tracks, idx); onOpenPlayer()
             }
         }
+    }
+
+    if (showBatchDownload) {
+        com.walkman.tv.ui.components.BatchDownloadDialog(
+            playlistName = playlist.name,
+            tracks = playlist.tracks,
+            onDismiss = { showBatchDownload = false },
+        )
     }
 }
 
@@ -446,10 +485,18 @@ private fun DownloadedTab(
 ) {
     val active = records.values.filter { it.status == com.walkman.tv.data.model.DownloadStatus.DOWNLOADING }
     val failed = records.values.filter { it.status == com.walkman.tv.data.model.DownloadStatus.FAILED }
+    // Hoisted out of the LazyColumn body (LazyListScope is not @Composable, so collectAsState
+    // can't be called inside it).
+    val nowId = appContainer.playbackController.state.collectAsState().value.currentTrack?.id
+    // COMPLETED downloads whose file is gone — stay listed here but flagged 文件缺失 + retry.
+    val missing by appContainer.downloadStore.missingDownloads.collectAsState()
 
     androidx.compose.foundation.lazy.LazyColumn(
         modifier = Modifier
             .fillMaxSize()
+            // focusRestorer remembers which row was last focused; when the user opens the
+            // player and comes back, focus lands on the same line they launched from.
+            .focusRestorer()
             .focusProperties {
                 exit = { dir -> if (dir == FocusDirection.Up) upFocus else FocusRequester.Default }
             },
@@ -472,7 +519,6 @@ private fun DownloadedTab(
                 FailedDownloadRow(rec)
             }
         }
-        val nowId = appContainer.playbackController.state.collectAsState().value.currentTrack?.id
         folders.forEach { folder ->
             val folderTracks = folder.trackIDs.mapNotNull { id ->
                 records[id]?.takeIf { it.status == com.walkman.tv.data.model.DownloadStatus.COMPLETED }
@@ -488,12 +534,22 @@ private fun DownloadedTab(
                 }
                 val tracks = folderTracks.map { it.track }
                 itemsIndexed(tracks) { idx, track ->
-                    com.walkman.tv.ui.components.TrackRow(
-                        track = track,
-                        index = idx,
-                        nowPlaying = track.id == nowId,
-                        onClick = { onPlay(tracks, idx) },
-                    )
+                    if (track.id in missing) {
+                        MissingDownloadRow(
+                            track = track,
+                            index = idx,
+                            nowPlaying = track.id == nowId,
+                            onPlay = { onPlay(tracks, idx) },
+                            onRetry = { appContainer.downloadCoordinator.redownload(track.id) },
+                        )
+                    } else {
+                        com.walkman.tv.ui.components.TrackRow(
+                            track = track,
+                            index = idx,
+                            nowPlaying = track.id == nowId,
+                            onClick = { onPlay(tracks, idx) },
+                        )
+                    }
                 }
             }
         }
@@ -583,5 +639,72 @@ private fun FailedDownloadRow(rec: com.walkman.tv.data.model.DownloadRecord) {
             accent = AppColors.Danger,
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
         ) { Text("删除", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+    }
+}
+
+/**
+ * A downloaded row whose file went missing on disk. Stays in its folder (the record is still a
+ * download), but shows a red 文件缺失 badge in place of the normal look + a 重试 pill that
+ * re-downloads. Clicking the left part still plays — playback falls back to the network.
+ */
+@Composable
+private fun MissingDownloadRow(
+    track: com.walkman.tv.data.model.Track,
+    index: Int,
+    nowPlaying: Boolean,
+    onPlay: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Left block: focusable → plays (network fallback). Mirrors a normal row's layout.
+        TvFocusable(onClick = onPlay, modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(modifier = Modifier.width(28.dp), contentAlignment = Alignment.Center) {
+                    Text(
+                        "${index + 1}",
+                        color = AppColors.TextMuted,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        track.name,
+                        color = if (nowPlaying) AppColors.AccentGreen else AppColors.TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        track.subtitle,
+                        color = AppColors.TextSecondary,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(AppColors.Danger.copy(alpha = 0.18f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text("文件缺失", color = AppColors.Danger, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        TvPill(
+            onClick = onRetry,
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        ) { Text("重试", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
     }
 }

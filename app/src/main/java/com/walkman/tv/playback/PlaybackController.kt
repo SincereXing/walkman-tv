@@ -18,6 +18,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import com.walkman.tv.data.store.PlaybackSnapshot
 import com.walkman.tv.data.model.Quality
 import com.walkman.tv.data.model.Track
+import com.walkman.tv.source.ResolveOrigin
 import com.walkman.tv.source.ResolvedTrack
 import com.walkman.tv.source.SourceManager
 import kotlinx.coroutines.CoroutineScope

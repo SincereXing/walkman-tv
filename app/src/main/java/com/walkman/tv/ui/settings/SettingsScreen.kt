@@ -12,9 +12,11 @@ import androidx.compose.foundation.rememberScrollState
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -91,6 +93,24 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     val r = appContainer.scriptStore.import(raw)
                     status = r.fold({ "已导入：${it.name}" }, { "导入失败：${it.message}" })
                 }
+            }
+        }
+    }
+
+    // SAF folder picker for choosing a download directory (any browsable folder, incl. USB/SD).
+    val downloadFolderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    )
+                }
+                appContainer.settingsStore.update { it.copy(customDownloadTreeUri = uri.toString()) }
             }
         }
     }
@@ -176,6 +196,113 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             ToggleRow("显示歌词翻译", settings.showLyricTranslation) {
                 scope.launch { appContainer.settingsStore.update { it.copy(showLyricTranslation = !it.showLyricTranslation) } }
             }
+        }
+
+        Section("歌词大小") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.walkman.tv.data.store.LyricSize.entries.forEach { size ->
+                    TvPill(
+                        onClick = { scope.launch { appContainer.settingsStore.update { it.copy(lyricSize = size) } } },
+                        selected = settings.lyricSize == size,
+                    ) {
+                        Text(size.label, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+
+        Section("下载目录") {
+            val roots = remember { appContainer.downloadStore.availableRoots() }
+            val treeUriStr = settings.customDownloadTreeUri
+            val usingTree = treeUriStr != null
+            // Current volume = configured path, or the first volume (default) when unset. Only
+            // highlighted when a SAF folder is NOT in use.
+            val currentPath = settings.customDownloadDir
+                ?: roots.firstOrNull()?.dir?.absolutePath
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                roots.forEachIndexed { index, opt ->
+                    val path = opt.dir.absolutePath
+                    TvPill(
+                        onClick = {
+                            scope.launch {
+                                appContainer.settingsStore.update {
+                                    // Picking a volume clears any SAF folder. Store null for the
+                                    // default (first) volume so it keeps following the system default.
+                                    it.copy(
+                                        customDownloadDir = if (index == 0) null else path,
+                                        customDownloadTreeUri = null,
+                                    )
+                                }
+                            }
+                        },
+                        selected = !usingTree && path == currentPath,
+                    ) {
+                        Text(opt.label, fontSize = 13.sp)
+                    }
+                }
+                // Pick any folder via the system folder picker (SAF) — incl. USB/SD subfolders.
+                TvPill(
+                    onClick = { downloadFolderPicker.launch(null) },
+                    selected = usingTree,
+                ) {
+                    Text("选择其他文件夹…", fontSize = 13.sp)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                when {
+                    usingTree -> "已选文件夹：" + (
+                        treeUriStr?.let { runCatching { appContainer.downloadStore.treeDisplayName(Uri.parse(it)) }.getOrNull() }
+                            ?: "自定义文件夹"
+                        )
+                    else -> currentPath ?: "（应用默认音乐目录）"
+                },
+                color = AppColors.TextMuted,
+                fontSize = 11.sp,
+            )
+            Text(
+                if (usingTree) {
+                    "下载会保存到你选的文件夹（可被文件管理器/其它应用浏览）。切换目录只影响之后的下载。"
+                } else {
+                    "存储卷目录在应用专属空间（卸载会清除、不易在文件管理器看到）；想存到可见位置请点「选择其他文件夹」。切换只影响之后的下载，已下载的仍可正常播放。"
+                },
+                color = AppColors.TextMuted,
+                fontSize = 11.sp,
+            )
+        }
+
+        Section("下载并发数") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                (1..6).forEach { n ->
+                    TvPill(
+                        onClick = { scope.launch { appContainer.settingsStore.update { it.copy(maxConcurrentDownloads = n) } } },
+                        selected = settings.maxConcurrentDownloads == n,
+                    ) {
+                        Text("$n", fontSize = 13.sp)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "同时下载的最大歌曲数（批量下载时排队，越大越快但越占带宽）。默认 3。",
+                color = AppColors.TextMuted,
+                fontSize = 11.sp,
+            )
+        }
+
+        Section("批量下载") {
+            ToggleRow("已下载的也按新音质重下", settings.redownloadOnQualityChange) {
+                scope.launch { appContainer.settingsStore.update { it.copy(redownloadOnQualityChange = !it.redownloadOnQualityChange) } }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "开启后，对歌单「下载全部」时，已下载但音质与所选不同的歌会按新音质重新下载（如 128k 升级到 FLAC）；关闭则一律跳过已下载。默认开启。",
+                color = AppColors.TextMuted,
+                fontSize = 11.sp,
+            )
         }
 
         Section("自定义音源") {

@@ -68,7 +68,9 @@ fun PlaylistPickerDialog(track: Track, onDismiss: () -> Unit) {
         runCatching { firstRowFocus.requestFocus() }
     }
 
-    Dialog(
+    // While a stacked dialog is open (download / new-name), suppress the picker so the two
+    // backdrops don't compete and the top dialog isn't dimmed behind another panel.
+    if (!showDownload && !showCreate) Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {

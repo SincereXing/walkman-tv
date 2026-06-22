@@ -10,11 +10,34 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import java.io.File
 
+/** Lyric font-size preset for the full-screen player. [activeSp]/[inactiveSp]/[translationSp]
+ *  are the rendered sizes for the current line / other lines / translation line. STANDARD matches
+ *  the original hard-coded 22/15/12. */
+@Serializable
+enum class LyricSize(val label: String, val activeSp: Int, val inactiveSp: Int, val translationSp: Int) {
+    STANDARD("标准", 22, 15, 12),
+    LARGE("大", 30, 19, 15),
+    MAX("最大", 40, 24, 18),
+}
+
 @Serializable
 data class Settings(
     val preferredQuality: Quality = Quality.FLAC24,
     val fallbackEnabled: Boolean = true,
     val showLyricTranslation: Boolean = true,
+    val lyricSize: LyricSize = LyricSize.STANDARD,
+    /** Absolute path of the chosen download root (a writable storage volume). null ⇒ default
+     *  app-scoped Music dir on primary storage. See DownloadStore.availableRoots(). */
+    val customDownloadDir: String? = null,
+    /** A user-picked SAF folder (content tree Uri) to download into. When non-null it takes
+     *  precedence over [customDownloadDir] — files are exported into this folder so they live in
+     *  a browsable location (e.g. a USB drive folder). null ⇒ use the File-based volume root. */
+    val customDownloadTreeUri: String? = null,
+    /** Max simultaneous download transfers (batch or otherwise). Clamped to 1..8 on apply. */
+    val maxConcurrentDownloads: Int = 3,
+    /** Batch "下载全部": when a track is already downloaded but at a different quality than the
+     *  chosen target, re-download it to match (true) vs. always skip already-downloaded (false). */
+    val redownloadOnQualityChange: Boolean = true,
     /** Sources that feed the discover (home) page. Spec docs/discover-page-spec-android-tv.md §2:
      *  fixed 4 in order kw → wy → kg → tx, default all enabled. */
     val homeSources: Set<com.walkman.tv.data.model.SourceID> = setOf(

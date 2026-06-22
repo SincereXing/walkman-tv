@@ -33,7 +33,36 @@ internal object FlacTagWriter {
         cover: ByteArray? = null,
         coverMime: String = "image/jpeg",
     ): Result<Unit> = runCatching {
-        val bytes = file.readBytes()
+        val tagged = tag(
+            file.readBytes(), title, artist, album,
+            trackNumber, trackTotal, year, genre, publisher, albumArtist,
+            lyrics, cover, coverMime,
+        )
+        val tmp = File(file.parentFile, file.name + ".tagging")
+        tmp.outputStream().use { it.write(tagged) }
+        if (!tmp.renameTo(file)) {
+            tmp.copyTo(file, overwrite = true)
+            tmp.delete()
+        }
+    }
+
+    /** Pure transform: take the original FLAC bytes, return a copy with our VORBIS_COMMENT +
+     *  PICTURE blocks. Lets callers write the result anywhere (File or SAF). */
+    fun tag(
+        bytes: ByteArray,
+        title: String?,
+        artist: String?,
+        album: String?,
+        trackNumber: Int? = null,
+        trackTotal: Int? = null,
+        year: String? = null,
+        genre: String? = null,
+        publisher: String? = null,
+        albumArtist: String? = null,
+        lyrics: String? = null,
+        cover: ByteArray? = null,
+        coverMime: String = "image/jpeg",
+    ): ByteArray {
         require(bytes.size >= 4) { "file too short" }
         require(
             bytes[0] == 'f'.code.toByte() && bytes[1] == 'L'.code.toByte() &&
@@ -93,12 +122,7 @@ internal object FlacTagWriter {
         // Original audio frames.
         out.write(bytes, audioStart, bytes.size - audioStart)
 
-        val tmp = File(file.parentFile, file.name + ".tagging")
-        tmp.outputStream().use { it.write(out.toByteArray()) }
-        if (!tmp.renameTo(file)) {
-            tmp.copyTo(file, overwrite = true)
-            tmp.delete()
-        }
+        return out.toByteArray()
     }
 
     private fun buildVorbisComment(
