@@ -9,3 +9,8 @@ local.properties
 
 # UI/UX skill caches
 .claude/skills/ui-ux-pro-max/scripts/__pycache__/
+
+# Release signing secrets — keep ONLY on local machines, never commit
+/keystore.properties
+/app/release.keystore
+*.jks
