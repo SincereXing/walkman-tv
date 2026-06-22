@@ -7,9 +7,18 @@
   <img alt="language" src="https://img.shields.io/badge/Kotlin-Compose%20for%20TV-7F52FF">
   <img alt="minSdk" src="https://img.shields.io/badge/minSdk-21-blue">
   <img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-green">
+  <img alt="built with" src="https://img.shields.io/badge/built%20with-Claude%20Code-d97757">
 </p>
 
-主打「打开就能听、用方向键就能玩」：暗色界面、大封面、逐行滚动歌词、旋转黑胶，所有交互都为 D-pad（方向键 + OK + 返回）设计，适配客厅观看距离。逻辑参考同款 iOS（Swift/SwiftUI）实现，并保留 **洛雪音乐（lx-music）v4 自定义源的 JS 解析协议**，在此基础上**扩展了更多音质档位**。
+主打「打开就能听、用方向键就能玩」：暗色界面、大封面、逐行滚动歌词、旋转黑胶，所有交互都为 D-pad（方向键 + OK + 返回）设计，适配客厅观看距离。保留 **洛雪音乐（lx-music）v4 自定义源的 JS 解析协议**，在此基础上**扩展了更多音质档位**。
+
+> 🤖 本项目的**全部代码均由 [Claude Code](https://claude.com/claude-code) 生成**（含架构、UI、播放/下载/导入逻辑与本文档）。
+
+---
+
+## 📺 界面预览
+
+![全屏播放器：旋转黑胶 + 逐行歌词 + 波形进度 + Master/FLAC 24bit/192kHz 音质标识](docs/screenshots/player.png)
 
 ---
 
@@ -41,7 +50,6 @@
 | 酷狗音乐 | `kg` | ✅ | ✅ | ✅ | ✅ |
 | QQ 音乐 | `tx` | ✅ | ✅ | ✅ | ✅ |
 | 网易云音乐 | `wy` | ✅ | ✅ | ✅ | ✅ |
-| 咪咕音乐 | `mg` | ✅ | — | — | — |
 | 本地文件 | `local` | — | — | — | （本地导入） |
 
 > 目录数据（搜索 / 排行榜 / 歌单）走各平台直连 API；播放地址解析优先走自定义源脚本，失败时回落到内置直连（kw / wy）兜底。
@@ -63,7 +71,7 @@
 | 高品 | `320k` | 高品 320k | HQ |
 | 标准 | `128k` | 标准 128k | STD |
 
-> 其中 `hires / atmos / atmos_plus / master` 为**扩展档位**：目录接口通常不会上报这些字段，因此当脚本声明支持时可直接尝试，不受搜索结果元数据限制。
+> 音质档位是开放的：**如需支持新增档位，只需在 js 自定义源脚本里声明该档位的 quality key（即脚本上报的 `sources[平台].qualitys` 列表中加上对应字符串，并在 `musicUrl` 解析里处理该 `type`），App 端在搜索 / 播放 / 下载 / Hi-Res 选档全链路即可直接使用，无需改动客户端。**
 
 ---
 
@@ -132,12 +140,24 @@ app/src/main/java/com/walkman/tv/
 # 1. 配置本机 SDK
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-# 2. 构建
+# 2. 构建调试包
 ./gradlew assembleDebug
 
 # 3. 安装到 Android TV 设备 / 模拟器（建议 Android TV 1080p, API 34）
 ./gradlew installDebug
 ```
+
+正式打包（Release）：
+
+```bash
+# 正式 Release APK（按 ABI 拆分，产物在 app/build/outputs/apk/release/）
+./gradlew assembleRelease
+
+# 或打 Android App Bundle（上架用）
+./gradlew bundleRelease
+```
+
+> 正式签名：在仓库根目录放一个 `keystore.properties`（含 `storeFile` / `storePassword` / `keyAlias` / `keyPassword`，指向你的 `release.keystore`），`assembleRelease` 会自动用它签名。**未提供时会回落到 debug 签名**，产物依然可直接安装（仅用于自测，不要用于上架）。
 
 启动后落在「推荐」首页，方向键在导航 pill / 卡片 / 列表间移动焦点，OK 进入全屏播放器。
 
