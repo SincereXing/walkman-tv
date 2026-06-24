@@ -1,6 +1,6 @@
 # 随便听 · walkman-tv
 
-> 一款面向大屏、遥控器友好的 **原生 Android TV 音乐播放器**，使用 **Kotlin + Jetpack Compose for TV** 编写。
+> 一款面向大屏、遥控器友好的 **原生 Android TV 音乐播放器**，使用 **Kotlin + Jetpack Compose for TV** 编写，**安装后需先在设置页面配置自定义音源** ，否则播放不了音乐。
 
 <p>
   <a href="https://github.com/SincereXing/walkman-tv/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/SincereXing/walkman-tv?display_name=tag&label=release&color=3DDC84"></a>
