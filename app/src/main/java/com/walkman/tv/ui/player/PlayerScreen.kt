@@ -47,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -603,30 +604,97 @@ private fun TransportBar(
     }
 }
 
-private const val SEEK_STEP_MS = 5_000L
+// Quick tap (held ≤ this) = a discrete nudge; anything longer is treated as a continuous scrub.
+private const val SCRUB_TAP_MS = 220L
+private const val SCRUB_TAP_STEP_MS = 5_000L
+// Continuous-scrub speed in ms-of-media per real second, ramping from BASE up to MAX so a short
+// hold seeks precisely while a long hold sweeps across the track.
+private const val SCRUB_BASE_PER_SEC = 6_000f
+private const val SCRUB_MAX_PER_SEC = 60_000f
+private const val SCRUB_ACCEL_PER_SEC2 = 40_000f
+// Safety net for a missed KeyUp: stop scrubbing if no key signal arrives for this long.
+private const val SCRUB_RELEASE_TIMEOUT_MS = 1_000L
 
 /**
- * D-pad-seekable progress bar. When focused (D-pad up from the play button), left/right step
- * the position by 5 seconds. Visual focus cue: bar thickens (3 -> 6dp) and the elapsed-time
- * label turns green. Long-press auto-repeat is handled by the OS (held D-pad emits repeats).
+ * D-pad-seekable progress bar. When focused (D-pad up from the play button), holding left/right
+ * scrubs **smoothly and proportionally to how long you hold** — the bar previews the new position
+ * frame-by-frame and only commits ONE real player seek on release, so there's no per-step
+ * re-buffer stutter. A quick tap still does a discrete ±5s nudge.
+ *
+ * Release is detected via KeyUp (primary) plus a repeat-timeout watchdog (backstop for a dropped
+ * KeyUp). Visual focus cue: bar thickens (3 -> 6dp) and the elapsed-time label turns green.
  */
 @Composable
 private fun ProgressBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) {
-    val fraction = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
     var focused by remember { mutableStateOf(false) }
+    // Scrub state. dir: -1 rewind / 0 idle / +1 forward. previewMs is what the bar shows while
+    // scrubbing; startPos/startAt anchor tap-vs-hold detection + the acceleration ramp.
+    var scrubDir by remember { mutableStateOf(0) }
+    var previewMs by remember { mutableStateOf(0L) }
+    var scrubStartPos by remember { mutableStateOf(0L) }
+    var scrubStartAt by remember { mutableStateOf(0L) }
+    var lastKeyAt by remember { mutableStateOf(0L) }
+
+    fun commit() {
+        if (scrubDir == 0) return
+        val held = android.os.SystemClock.uptimeMillis() - scrubStartAt
+        val target = if (held <= SCRUB_TAP_MS) {
+            (scrubStartPos + scrubDir * SCRUB_TAP_STEP_MS).coerceIn(0L, durationMs)
+        } else {
+            previewMs.coerceIn(0L, durationMs)
+        }
+        onSeek(target)
+        scrubDir = 0
+    }
+
+    // Frame-paced scrub loop: advances previewMs by real elapsed time while a direction is held.
+    LaunchedEffect(scrubDir) {
+        if (scrubDir == 0) return@LaunchedEffect
+        var lastT = android.os.SystemClock.uptimeMillis()
+        while (scrubDir != 0) {
+            withFrameNanos { } // pace to the display refresh
+            val now = android.os.SystemClock.uptimeMillis()
+            val dt = (now - lastT).coerceAtLeast(0L)
+            lastT = now
+            val heldSec = (now - scrubStartAt) / 1000f
+            val speed = (SCRUB_BASE_PER_SEC + SCRUB_ACCEL_PER_SEC2 * heldSec)
+                .coerceAtMost(SCRUB_MAX_PER_SEC)
+            previewMs = (previewMs + scrubDir * speed * (dt / 1000f)).toLong()
+                .coerceIn(0L, durationMs)
+            // Backstop: KeyUp was dropped — commit and stop.
+            if (now - lastKeyAt > SCRUB_RELEASE_TIMEOUT_MS) commit()
+        }
+    }
+
+    val shownMs = if (scrubDir != 0) previewMs else positionMs
+    val fraction = if (durationMs > 0) (shownMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { fs ->
+                focused = fs.isFocused
+                if (!fs.isFocused && scrubDir != 0) commit() // committed if focus leaves mid-scrub
+            }
             .onPreviewKeyEvent { evt ->
-                if (evt.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 if (durationMs <= 0) return@onPreviewKeyEvent false
-                when (evt.key) {
-                    Key.DirectionLeft -> {
-                        onSeek((positionMs - SEEK_STEP_MS).coerceAtLeast(0L)); true
+                val dir = when (evt.key) {
+                    Key.DirectionLeft -> -1
+                    Key.DirectionRight -> 1
+                    else -> return@onPreviewKeyEvent false
+                }
+                when (evt.type) {
+                    KeyEventType.KeyDown -> {
+                        lastKeyAt = android.os.SystemClock.uptimeMillis()
+                        if (scrubDir == 0) {
+                            scrubStartPos = positionMs
+                            previewMs = positionMs
+                            scrubStartAt = lastKeyAt
+                        }
+                        scrubDir = dir
+                        true
                     }
-                    Key.DirectionRight -> {
-                        onSeek((positionMs + SEEK_STEP_MS).coerceAtMost(durationMs)); true
+                    KeyEventType.KeyUp -> {
+                        commit(); true
                     }
                     else -> false
                 }
@@ -649,7 +717,7 @@ private fun ProgressBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Un
         }
         Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(
-                fmt(positionMs),
+                fmt(shownMs),
                 color = if (focused) AppColors.AccentGreen else AppColors.TextMuted,
                 fontSize = 11.sp,
                 fontWeight = if (focused) FontWeight.Bold else FontWeight.Normal,
