@@ -199,7 +199,9 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                     modifier = Modifier.fillMaxHeight(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    val vinylSize = maxHeight.coerceIn(300.dp, 560.dp)
+                    // Floor at the original fixed 360dp so smaller-viewport TVs (e.g. the 75")
+                    // keep the previous size, while larger ones grow toward the ceiling.
+                    val vinylSize = maxHeight.coerceIn(360.dp, 560.dp)
                     VinylDisc(track.picURL, state.isPlaying, size = vinylSize)
                 }
             }

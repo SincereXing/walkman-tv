@@ -62,8 +62,9 @@ fun RecommendScreen(
         modifier = modifier.fillMaxSize().padding(vertical = 8.dp),
     ) {
         // Left panel width scales with the screen so the mini player grows on larger TVs
-        // instead of leaving the fixed 340dp column adrift in empty space.
-        val panelWidth = (maxWidth * 0.24f).coerceIn(320.dp, 480.dp)
+        // instead of leaving the fixed 340dp column adrift in empty space. Floor at the original
+        // 340dp so smaller-viewport TVs (e.g. the 75") keep the previous width.
+        val panelWidth = (maxWidth * 0.24f).coerceIn(340.dp, 480.dp)
         Row(modifier = Modifier.fillMaxSize()) {
             NowPlayingPanel(onOpenPlayer = onOpenPlayer, modifier = Modifier.width(panelWidth).fillMaxHeight())
             Spacer(Modifier.width(16.dp))
@@ -88,8 +89,9 @@ private fun NowPlayingPanel(onOpenPlayer: () -> Unit, modifier: Modifier = Modif
     ) {
         // Cover (and the waveform/progress that share its width) scale to the panel — bounded so
         // it never eats the whole column height, leaving room for text + transport controls.
+        // Floor at the original fixed 240dp so smaller-viewport TVs keep the previous size.
         val contentWidth = maxWidth
-        val coverSize = minOf(contentWidth, maxHeight * 0.5f)
+        val coverSize = minOf(contentWidth, maxHeight * 0.5f).coerceAtLeast(240.dp)
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
