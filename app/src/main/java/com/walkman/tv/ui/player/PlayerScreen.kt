@@ -70,6 +70,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import androidx.compose.ui.unit.sp
@@ -192,11 +193,14 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                     )
                 }
                 Spacer(Modifier.width(32.dp))
-                Box(
-                    modifier = Modifier.fillMaxHeight().width(380.dp),
+                // Vinyl scales with the available vertical space so it grows on larger screens.
+                // Clamped so it stays sensible on very short / very tall layouts.
+                androidx.compose.foundation.layout.BoxWithConstraints(
+                    modifier = Modifier.fillMaxHeight(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    VinylDisc(track.picURL, state.isPlaying)
+                    val vinylSize = maxHeight.coerceIn(300.dp, 560.dp)
+                    VinylDisc(track.picURL, state.isPlaying, size = vinylSize)
                 }
             }
 
@@ -355,7 +359,7 @@ private fun EqualizerDialog(onDismiss: () -> Unit) {
 // ============== Vinyl disc =====================================================================
 
 @Composable
-private fun VinylDisc(picURL: String?, isPlaying: Boolean) {
+private fun VinylDisc(picURL: String?, isPlaying: Boolean, size: Dp = 360.dp) {
     val rotation = remember { Animatable(0f) }
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
@@ -368,12 +372,17 @@ private fun VinylDisc(picURL: String?, isPlaying: Boolean) {
             }
         }
     }
+    // All inner elements scale off [size] (the halo) so the whole disc grows with the screen.
+    // Ratios preserve the original 360/300/220/14 design.
+    val record = size * (300f / 360f)
+    val art = size * (220f / 360f)
+    val spindle = size * (14f / 360f)
     val circle = androidx.compose.foundation.shape.CircleShape
-    Box(modifier = Modifier.size(360.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(size), contentAlignment = Alignment.Center) {
         // 1) Outer green halo (decorative glow, doesn't rotate).
         Box(
             modifier = Modifier
-                .size(360.dp)
+                .size(size)
                 .clip(circle)
                 .background(
                     Brush.radialGradient(
@@ -389,15 +398,15 @@ private fun VinylDisc(picURL: String?, isPlaying: Boolean) {
         // transform at the draw phase so the Canvas + AsyncImage don't recompose per frame.
         Box(
             modifier = Modifier
-                .size(300.dp)
+                .size(record)
                 .graphicsLayer { rotationZ = rotation.value },
             contentAlignment = Alignment.Center,
         ) {
-            VinylGrooves(modifier = Modifier.size(300.dp))
-            // Album art clipped to circle, sits flush with the inner groove edge (≈230dp).
+            VinylGrooves(modifier = Modifier.size(record))
+            // Album art clipped to circle, sits flush with the inner groove edge.
             Box(
                 modifier = Modifier
-                    .size(220.dp)
+                    .size(art)
                     .clip(circle)
                     .background(AppColors.BgDeep),
             ) {
@@ -405,7 +414,7 @@ private fun VinylDisc(picURL: String?, isPlaying: Boolean) {
             }
         }
         // 3) Center spindle hole (doesn't rotate — stays sharp).
-        Box(modifier = Modifier.size(14.dp).clip(circle).background(Color.Black))
+        Box(modifier = Modifier.size(spindle).clip(circle).background(Color.Black))
     }
 }
 
@@ -416,8 +425,10 @@ private fun VinylGrooves(modifier: Modifier) {
     androidx.compose.foundation.Canvas(modifier = modifier) {
         val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
         val outerRadius = size.minDimension / 2f
-        // The grooves sit between the album-art edge (~110dp radius) and the outer rim.
-        val innerRadius = 110.dp.toPx()
+        // The grooves sit between the album-art edge and the outer rim. Proportional to the
+        // canvas (110/150 of the radius — matches the original 300dp record / 220dp art) so it
+        // scales with the disc on larger screens.
+        val innerRadius = outerRadius * (110f / 150f)
 
         // Base dark green disc.
         drawCircle(color = Color(0xFF0E2818), radius = outerRadius, center = center)

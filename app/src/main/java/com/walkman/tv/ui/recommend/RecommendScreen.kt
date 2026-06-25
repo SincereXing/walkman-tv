@@ -58,14 +58,21 @@ fun RecommendScreen(
     onOpenPlayer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier = modifier.fillMaxSize().padding(vertical = 8.dp)) {
-        NowPlayingPanel(onOpenPlayer = onOpenPlayer, modifier = Modifier.width(340.dp).fillMaxHeight())
-        Spacer(Modifier.width(16.dp))
-        RecommendGrid(
-            onNavigate = onNavigate,
-            onOpenPlayer = onOpenPlayer,
-            modifier = Modifier.weight(1f).fillMaxHeight(),
-        )
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier = modifier.fillMaxSize().padding(vertical = 8.dp),
+    ) {
+        // Left panel width scales with the screen so the mini player grows on larger TVs
+        // instead of leaving the fixed 340dp column adrift in empty space.
+        val panelWidth = (maxWidth * 0.24f).coerceIn(320.dp, 480.dp)
+        Row(modifier = Modifier.fillMaxSize()) {
+            NowPlayingPanel(onOpenPlayer = onOpenPlayer, modifier = Modifier.width(panelWidth).fillMaxHeight())
+            Spacer(Modifier.width(16.dp))
+            RecommendGrid(
+                onNavigate = onNavigate,
+                onOpenPlayer = onOpenPlayer,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+        }
     }
 }
 
@@ -76,60 +83,70 @@ private fun NowPlayingPanel(onOpenPlayer: () -> Unit, modifier: Modifier = Modif
     val lyrics by controller.lyrics.collectAsState()
     val track = state.currentTrack
 
-    Column(
+    androidx.compose.foundation.layout.BoxWithConstraints(
         modifier = modifier.padding(horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Smaller cover (240dp instead of full panel width), centered.
-        TvFocusable(
-            onClick = onOpenPlayer,
-            modifier = Modifier.size(240.dp),
-            shape = RoundedCornerShape(14.dp),
+        // Cover (and the waveform/progress that share its width) scale to the panel — bounded so
+        // it never eats the whole column height, leaving room for text + transport controls.
+        val contentWidth = maxWidth
+        val coverSize = minOf(contentWidth, maxHeight * 0.5f)
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            // Center vertically so spare space splits top+bottom instead of dumping a big gap
+            // under the panel on tall screens.
+            verticalArrangement = Arrangement.Center,
         ) {
-            Artwork(track?.picURL, modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(14.dp))
-        }
-        Spacer(Modifier.height(12.dp))
-        if (track != null) {
-            Text(track.name, color = AppColors.TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            Text(track.singer, color = AppColors.TextSecondary, fontSize = 13.sp, maxLines = 1)
-            Spacer(Modifier.height(8.dp))
-            val active = LyricParser.activeIndex(state.positionMs / 1000.0, lyrics)
-            val line = lyrics.getOrNull(active)?.text ?: if (state.resolving) "解析中…" else ""
-            Text(line, color = AppColors.LyricIdle, fontSize = 13.sp, maxLines = 1)
-        } else {
-            Text("暂无播放，去推荐里点歌开始吧", color = AppColors.TextSecondary, fontSize = 14.sp)
-        }
-        // Waveform + read-only progress bar + time row between the lyric and the transport
-        // controls. All constrained to the cover's width (240dp). Hidden entirely when no track.
-        if (track != null) {
-            Spacer(Modifier.height(10.dp))
-            // Shared with the full-screen player so both surfaces animate identically — and
-            // both ride the same real-time audio level from AudioLevelProcessor.
-            val audioLevel by controller.audioLevel.collectAsState()
-            com.walkman.tv.ui.components.Waveform(
-                isPlaying = state.isPlaying,
-                level = audioLevel,
-                modifier = Modifier.width(240.dp).height(28.dp),
-            )
-            Spacer(Modifier.height(6.dp))
-            MiniProgressBar(
-                positionMs = state.positionMs,
-                durationMs = state.durationMs,
-                modifier = Modifier.width(240.dp),
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-        // Controls centered.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CircleControl(Icons.Filled.SkipPrevious) { controller.prev() }
-            Spacer(Modifier.width(20.dp))
-            CircleControl(if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow) { controller.togglePlay() }
-            Spacer(Modifier.width(20.dp))
-            CircleControl(Icons.Filled.SkipNext) { controller.next() }
+            TvFocusable(
+                onClick = onOpenPlayer,
+                modifier = Modifier.size(coverSize),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Artwork(track?.picURL, modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(14.dp))
+            }
+            Spacer(Modifier.height(12.dp))
+            if (track != null) {
+                Text(track.name, color = AppColors.TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(track.singer, color = AppColors.TextSecondary, fontSize = 13.sp, maxLines = 1)
+                Spacer(Modifier.height(8.dp))
+                val active = LyricParser.activeIndex(state.positionMs / 1000.0, lyrics)
+                val line = lyrics.getOrNull(active)?.text ?: if (state.resolving) "解析中…" else ""
+                Text(line, color = AppColors.LyricIdle, fontSize = 13.sp, maxLines = 1)
+            } else {
+                Text("暂无播放，去推荐里点歌开始吧", color = AppColors.TextSecondary, fontSize = 14.sp)
+            }
+            // Waveform + read-only progress bar + time row between the lyric and the transport
+            // controls. All constrained to the cover's width. Hidden entirely when no track.
+            if (track != null) {
+                Spacer(Modifier.height(10.dp))
+                // Shared with the full-screen player so both surfaces animate identically — and
+                // both ride the same real-time audio level from AudioLevelProcessor.
+                val audioLevel by controller.audioLevel.collectAsState()
+                com.walkman.tv.ui.components.Waveform(
+                    isPlaying = state.isPlaying,
+                    level = audioLevel,
+                    modifier = Modifier.width(coverSize).height(28.dp),
+                )
+                Spacer(Modifier.height(6.dp))
+                MiniProgressBar(
+                    positionMs = state.positionMs,
+                    durationMs = state.durationMs,
+                    modifier = Modifier.width(coverSize),
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+            // Controls centered.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircleControl(Icons.Filled.SkipPrevious) { controller.prev() }
+                Spacer(Modifier.width(20.dp))
+                CircleControl(if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow) { controller.togglePlay() }
+                Spacer(Modifier.width(20.dp))
+                CircleControl(Icons.Filled.SkipNext) { controller.next() }
+            }
         }
     }
 }
