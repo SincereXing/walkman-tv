@@ -1,0 +1,43 @@
+name: Debug Build
+
+# Builds a debug APK for any non-main branch push (and on manual dispatch) and uploads it as a
+# workflow artifact. Debug builds are signed with the committed debug.keystore — no secrets
+# needed — so the APK installs on a TV for quick testing. Download it from the run's
+# "Artifacts" section. (Release builds for shipping live in release.yml, triggered by v* tags.)
+
+on:
+  push:
+    branches-ignore:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest  # GitHub-hosted runner already ships the Android SDK
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APKs
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload debug APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: walkman-tv-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
