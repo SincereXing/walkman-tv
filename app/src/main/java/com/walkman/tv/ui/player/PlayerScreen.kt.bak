@@ -67,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.ui.PlayerView
@@ -82,7 +83,6 @@ import com.walkman.tv.ui.components.TvPill
 import com.walkman.tv.ui.theme.AppColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 @Composable
 fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
@@ -273,7 +273,7 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
   }
 }
 
-// ============== Vinyl disc (去除了中心小黑洞，封面直达圆心) =====================================================================
+// ============== Vinyl disc (自适应纯圆形画幅百分比微调) =====================================================================
 
 @Composable
 private fun VinylDisc(picURL: String?, isPlaying: Boolean, modifier: Modifier = Modifier) {
@@ -317,7 +317,6 @@ private fun VinylDisc(picURL: String?, isPlaying: Boolean, modifier: Modifier = 
       VinylGrooves(modifier = Modifier.fillMaxSize())
 
       // 3) 内圈专辑封面 (比例计算：220 / 300 ≈ 73.33%)
-      // 优化：封面图现在无缝延伸到轴心最中心，不再被黑色块覆盖
       Box(
         modifier = Modifier
           .fillMaxSize(0.7333f)
@@ -328,7 +327,14 @@ private fun VinylDisc(picURL: String?, isPlaying: Boolean, modifier: Modifier = 
         Artwork(picURL, modifier = Modifier.fillMaxSize(), shape = circle)
       }
     }
-    // 💡 4) 原本位于此处的中心金属轴孔 Box 已被彻底移除，解决了黑洞不好看的问题
+    // 4) 中心金属轴孔 (比例计算：14 / 360 ≈ 3.88%)
+    Box(
+      modifier = Modifier
+        .fillMaxSize(0.0388f)
+        .aspectRatio(1f)
+        .clip(circle)
+        .background(Color.Black)
+    )
   }
 }
 
@@ -339,6 +345,7 @@ private fun VinylGrooves(modifier: Modifier) {
     val outerRadius = size.minDimension / 2f
     val innerRadius = outerRadius * 0.7333f
 
+    // 动态根据实时大小计算线条缩放比率，保证线条密度不变形
     val baseScale = outerRadius / 150.dp.toPx()
 
     drawCircle(color = Color(0xFF0E2818), radius = outerRadius, center = center)
