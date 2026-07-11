@@ -202,7 +202,7 @@ class LocalServer private constructor(
                 <button>发送 URL</button>
               </form>
               <form class="card" method="POST" action="/api/script-file" enctype="multipart/form-data">
-                <input type="file" name="file" accept=".js,application/javascript">
+                <input type="file" name="file">
                 <button>上传脚本文件</button>
               </form>
             </body></html>
