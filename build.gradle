@@ -1,9 +1,9 @@
 // Top-level build file — native Android TV (Kotlin + Compose for TV), no React Native.
 buildscript {
     ext {
-        buildToolsVersion = "35.0.0"
+        buildToolsVersion = "36.0.0"
         minSdkVersion = 21
-        compileSdkVersion = 35
+        compileSdkVersion = 36
         targetSdkVersion = 34
         kotlinVersion = "1.9.24"
         composeCompilerVersion = "1.5.14"
