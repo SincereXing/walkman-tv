@@ -119,30 +119,49 @@ class JsScriptRuntime(
 
     private fun installGlobals(c: QuickJSContext) {
         val g = c.globalObject
+        // Every JSCallFunction body is wrapped in runCatching: these lambdas are invoked from
+        // QuickJS via JNI, and a Java exception escaping through that boundary (e.g. a bad
+        // script passing a non-string arg into the casts below) can take down the process
+        // instead of surfacing as a script error. Crypto helpers fall back to "" — same value
+        // CryptoBridge itself returns on failure.
         g.setProperty("__lx_native_call__", JSCallFunction { args ->
-            if (args.isNotEmpty() && args[0] == key) {
-                val action = args.getOrNull(1) as? String ?: return@JSCallFunction null
-                val data = args.getOrNull(2) as? String
-                handleScriptCall(action, data)
-            }
+            runCatching {
+                if (args.isNotEmpty() && args[0] == key) {
+                    val action = args.getOrNull(1) as? String ?: return@runCatching
+                    val data = args.getOrNull(2) as? String
+                    handleScriptCall(action, data)
+                }
+            }.onFailure { Log.e(TAG, "__lx_native_call__ failed: ${it.message}") }
             null
         })
-        g.setProperty("__lx_native_call__utils_str2b64", JSCallFunction { a -> CryptoBridge.str2b64(a[0] as String) })
-        g.setProperty("__lx_native_call__utils_b642buf", JSCallFunction { a -> CryptoBridge.b642buf(a[0] as String) })
-        g.setProperty("__lx_native_call__utils_str2md5", JSCallFunction { a -> CryptoBridge.str2md5(a[0] as String) })
+        g.setProperty("__lx_native_call__utils_str2b64", JSCallFunction { a ->
+            runCatching { CryptoBridge.str2b64(a[0] as String) }.getOrDefault("")
+        })
+        g.setProperty("__lx_native_call__utils_b642buf", JSCallFunction { a ->
+            runCatching { CryptoBridge.b642buf(a[0] as String) }.getOrDefault("[]")
+        })
+        g.setProperty("__lx_native_call__utils_str2md5", JSCallFunction { a ->
+            runCatching { CryptoBridge.str2md5(a[0] as String) }.getOrDefault("")
+        })
         g.setProperty("__lx_native_call__utils_aes_encrypt", JSCallFunction { a ->
-            CryptoBridge.aesEncrypt(a[0] as String, a[1] as String, a[2] as String, a[3] as String)
+            runCatching {
+                CryptoBridge.aesEncrypt(a[0] as String, a[1] as String, a[2] as String, a[3] as String)
+            }.getOrDefault("")
         })
         g.setProperty("__lx_native_call__utils_rsa_encrypt", JSCallFunction { a ->
-            CryptoBridge.rsaEncrypt(a[0] as String, a[1] as String, a[2] as String)
+            runCatching {
+                CryptoBridge.rsaEncrypt(a[0] as String, a[1] as String, a[2] as String)
+            }.getOrDefault("")
         })
         g.setProperty("__lx_native_call__set_timeout", JSCallFunction { a ->
-            val id = (a[0] as Number).toInt()
-            val ms = (a[1] as Number).toLong()
-            scope.launch {
-                delay(ms)
-                sendToScript("__set_timeout__", id.toString())
-            }
+            runCatching {
+                val id = (a[0] as Number).toInt()
+                val ms = (a[1] as Number).toLong()
+                scope.launch {
+                    delay(ms)
+                    sendToScript("__set_timeout__", id.toString())
+                }
+            }.onFailure { Log.e(TAG, "set_timeout failed: ${it.message}") }
             null
         })
     }

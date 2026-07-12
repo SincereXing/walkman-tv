@@ -133,9 +133,9 @@ dependencies {
     debugImplementation "androidx.compose.ui:ui-tooling"
 
     // Media playback
-    implementation "androidx.media3:media3-exoplayer:1.4.1"
-    implementation "androidx.media3:media3-session:1.4.1"
-    implementation "androidx.media3:media3-ui:1.4.1"
+    implementation "androidx.media3:media3-exoplayer:1.10.1"
+    implementation "androidx.media3:media3-session:1.10.1"
+    implementation "androidx.media3:media3-ui:1.10.1"
 
     // Image loading
     implementation "io.coil-kt:coil-compose:2.7.0"
@@ -155,7 +155,7 @@ dependencies {
     implementation "androidx.documentfile:documentfile:1.0.1"
 
     // Custom-source JS engine (kept from the RN app)
-    implementation "wang.harlon.quickjs:wrapper-android:2.4.0"
+    implementation "wang.harlon.quickjs:wrapper-android:3.2.3"
 
     // Phone-to-TV QR flow: tiny in-app HTTP server + QR encoder
     implementation "org.nanohttpd:nanohttpd:2.3.1"

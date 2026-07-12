@@ -174,6 +174,7 @@ class AppContainer(val appContext: Context) {
             libraryStore.loadAll()
             settingsStore.settings.onEach { s ->
                 playbackController.preferredQuality = s.preferredQuality
+                playbackController.setAudioOffloadEnabled(s.audioOffloadEnabled)
                 sourceManager.fallbackEnabled = s.fallbackEnabled
                 downloadStore.configuredRoot = s.customDownloadDir?.let { java.io.File(it) }
                 downloadStore.downloadTreeUri = s.customDownloadTreeUri?.let { runCatching { android.net.Uri.parse(it) }.getOrNull() }

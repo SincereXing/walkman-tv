@@ -192,6 +192,12 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
+        Section("音频硬件直通") {
+            ToggleRow("Hi-Res 硬件直通（播放无损闪退时请关闭）", settings.audioOffloadEnabled) {
+                scope.launch { appContainer.settingsStore.update { it.copy(audioOffloadEnabled = !it.audioOffloadEnabled) } }
+            }
+        }
+
         Section("歌词翻译") {
             ToggleRow("显示歌词翻译", settings.showLyricTranslation) {
                 scope.launch { appContainer.settingsStore.update { it.copy(showLyricTranslation = !it.showLyricTranslation) } }

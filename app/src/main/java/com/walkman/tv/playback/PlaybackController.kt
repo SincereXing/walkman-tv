@@ -461,6 +461,26 @@ class PlaybackController(
             }
     }
 
+    /**
+     * Toggle audio offload (DSP direct path). Some vendor audio HALs (小米/鸿蒙/坚果 etc.)
+     * advertise offload support but crash natively when fed FLAC/Hi-Res through it, so this
+     * is exposed as a settings switch. Takes effect on the next format change / track switch.
+     */
+    fun setAudioOffloadEnabled(enabled: Boolean) {
+        val mode = if (enabled) {
+            TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED
+        } else {
+            TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED
+        }
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setAudioOffloadPreferences(
+                TrackSelectionParameters.AudioOffloadPreferences.Builder()
+                    .setAudioOffloadMode(mode)
+                    .build(),
+            )
+            .build()
+    }
+
     fun togglePlay() {
         if (player.isPlaying) {
             player.pause()

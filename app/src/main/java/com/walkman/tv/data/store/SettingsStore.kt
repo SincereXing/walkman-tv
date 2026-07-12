@@ -24,6 +24,11 @@ enum class LyricSize(val label: String, val activeSp: Int, val inactiveSp: Int, 
 data class Settings(
     val preferredQuality: Quality = Quality.FLAC24,
     val fallbackEnabled: Boolean = true,
+    /** Audio offload (DSP direct path / HDMI passthrough). Bit-perfect Hi-Res on good HALs,
+     *  but some vendor HALs (小米/鸿蒙/坚果 etc.) crash natively in the offload path — the
+     *  settings toggle lets affected users turn it off. Default on so existing users keep
+     *  the current behaviour. */
+    val audioOffloadEnabled: Boolean = true,
     val showLyricTranslation: Boolean = true,
     val lyricSize: LyricSize = LyricSize.STANDARD,
     /** Absolute path of the chosen download root (a writable storage volume). null ⇒ default
