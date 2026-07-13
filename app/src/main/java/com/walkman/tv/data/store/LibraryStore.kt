@@ -93,6 +93,24 @@ class LibraryStore(context: Context) {
         persist()
     }
 
+    /** Batch add — one StateFlow update + one disk write. Songlist import uses this instead of
+     *  per-track [addToList] so a several-hundred-track import doesn't rewrite library.json once
+     *  per song (O(n²) serialization work that can stall low-end TVs). Dedupes against the list
+     *  and within [tracks]. */
+    suspend fun addAllToList(listId: String, tracks: List<Track>) {
+        _userLists.value = _userLists.value.map { pl ->
+            if (pl.id == listId) {
+                val seen = pl.tracks.mapTo(HashSet()) { it.id }
+                val fresh = tracks.filter { seen.add(it.id) }
+                if (fresh.isEmpty()) pl
+                else pl.copy(tracks = pl.tracks + fresh, updatedAt = System.currentTimeMillis())
+            } else {
+                pl
+            }
+        }
+        persist()
+    }
+
     suspend fun removeFromList(listId: String, trackId: String) {
         _userLists.value = _userLists.value.map {
             if (it.id == listId) it.copy(tracks = it.tracks.filter { t -> t.id != trackId }) else it

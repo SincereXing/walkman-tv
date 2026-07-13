@@ -33,6 +33,8 @@ object SonglistImporter {
             Regex("y\\.qq\\.com/n/ryqq/playlist/(\\d+)", RegexOption.IGNORE_CASE),
             Regex("qq\\.com[^\\s]*?taoge\\.html[^\\s]*?[?&]id=(\\d+)", RegexOption.IGNORE_CASE),
             Regex("y\\.qq\\.com[^\\s]*?/playsquare/(\\d+)", RegexOption.IGNORE_CASE),
+            // iPhone 微信分享的新格式：i2.y.qq.com/n3/other/pages/details/playlist.html?...&id=123
+            Regex("qq\\.com[^\\s]*?playlist\\.html[^\\s]*?[?#&]id=(\\d+)", RegexOption.IGNORE_CASE),
         ),
         SourceID.KG to listOf(
             Regex("kugou\\.com/songlist/(\\d+)", RegexOption.IGNORE_CASE),
@@ -91,8 +93,8 @@ object SonglistImporter {
             else -> "导入的歌单"
         }
         val playlist = library.createList(name)
-        // LibraryStore.addToList is per-track + dedupes by trackId — fine for a few hundred items.
-        detail.tracks.forEach { library.addToList(playlist.id, it) }
+        // Batch write: one StateFlow update + one library.json save for the whole songlist.
+        library.addAllToList(playlist.id, detail.tracks)
         return ImportResult(playlistId = playlist.id, count = detail.tracks.size)
     }
 }
