@@ -203,6 +203,12 @@ private class NetEaseSonglist(private val http: CatalogHttp) : SonglistService {
     }
 
     override suspend fun fetchDetail(list: SonglistInfo): SonglistDetail {
+        // v6 first: the old /api/playlist/detail truncates anonymous requests to the first 10
+        // tracks and even rewrites trackCount to 10, so a 500-song playlist imports as 10. v6
+        // still returns the complete trackIds list; full track objects then come from the old
+        // /api/song/detail batch API (old-format fields, same as buildNetEaseTrack expects).
+        fetchDetailV6(list)?.let { return it }
+        // Fallback: old single-call API — first ~10 tracks, better than nothing if v6 breaks.
         val url = "https://music.163.com/api/playlist/detail?id=${list.id}"
         val result = runCatching { JSONObject(http.getText(url, refererHeaders())).optJSONObject("result") }.getOrNull()
             ?: return SonglistDetail(list, emptyList())
@@ -215,6 +221,47 @@ private class NetEaseSonglist(private val http: CatalogHttp) : SonglistService {
             trackCount = result.optInt("trackCount").takeIf { it > 0 } ?: tracks.size,
         )
         return SonglistDetail(updated, tracks)
+    }
+
+    private suspend fun fetchDetailV6(list: SonglistInfo): SonglistDetail? {
+        val pl = runCatching {
+            JSONObject(http.postForm("https://music.163.com/api/v6/playlist/detail", "id=${list.id}&n=100000&s=8", refererHeaders()))
+                .optJSONObject("playlist")
+        }.getOrNull() ?: return null
+        val idArr = pl.optJSONArray("trackIds") ?: return null
+        val ids = (0 until idArr.length()).mapNotNull { idArr.optJSONObject(it)?.opt("id")?.toString() }
+        if (ids.isEmpty()) return null
+        // Same cap spirit as Kugou's resolveHashes(500) — keeps a 10k-song monster playlist from
+        // hammering the API / bloating library.json on a TV.
+        val tracks = fetchTracksByIds(ids.take(1000))
+        if (tracks.isEmpty()) return null
+        val updated = list.copy(
+            name = pl.optString("name").ifEmpty { list.name },
+            author = pl.optJSONObject("creator")?.optString("nickname")?.ifEmpty { null } ?: list.author,
+            picURL = pl.optString("coverImgUrl").ifEmpty { null } ?: list.picURL,
+            trackCount = tracks.size,
+        )
+        return SonglistDetail(updated, tracks)
+    }
+
+    /** Batch the old /api/song/detail (old-format fields → buildNetEaseTrack). 100 ids per chunk
+     *  keeps the GET URL ~1.3KB; chunks run in parallel, output re-ordered to match [ids]. */
+    private suspend fun fetchTracksByIds(ids: List<String>): List<Track> {
+        val byId = java.util.concurrent.ConcurrentHashMap<String, Track>()
+        coroutineScope {
+            ids.chunked(100).map { chunk ->
+                async {
+                    val url = "https://music.163.com/api/song/detail/?ids=${urlEncode("[${chunk.joinToString(",")}]")}"
+                    val arr = runCatching {
+                        JSONObject(http.getText(url, refererHeaders())).optJSONArray("songs")
+                    }.getOrNull() ?: return@async
+                    for (i in 0 until arr.length()) {
+                        buildNetEaseTrack(arr.optJSONObject(i))?.let { byId[it.songmid] = it }
+                    }
+                }
+            }.awaitAll()
+        }
+        return ids.mapNotNull { byId[it] }
     }
 
     private fun refererHeaders() = mapOf("Referer" to "https://music.163.com/", "User-Agent" to UA)
