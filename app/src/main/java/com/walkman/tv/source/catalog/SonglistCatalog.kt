@@ -231,9 +231,9 @@ private class NetEaseSonglist(private val http: CatalogHttp) : SonglistService {
         val idArr = pl.optJSONArray("trackIds") ?: return null
         val ids = (0 until idArr.length()).mapNotNull { idArr.optJSONObject(it)?.opt("id")?.toString() }
         if (ids.isEmpty()) return null
-        // Same cap spirit as Kugou's resolveHashes(500) — keeps a 10k-song monster playlist from
-        // hammering the API / bloating library.json on a TV.
-        val tracks = fetchTracksByIds(ids.take(1000))
+        // No cap: import everything. OkHttp's per-host limit (5 concurrent) naturally throttles
+        // the detail chunks, and addAllToList persists the whole batch in one write.
+        val tracks = fetchTracksByIds(ids)
         if (tracks.isEmpty()) return null
         val updated = list.copy(
             name = pl.optString("name").ifEmpty { list.name },
@@ -466,8 +466,7 @@ private class KugouSonglist(private val http: CatalogHttp) : SonglistService {
     }
 
     private suspend fun resolveHashes(hashes: List<String>): List<Track> {
-        val capped = hashes.take(500)
-        val chunks = capped.chunked(100)
+        val chunks = hashes.chunked(100)
         val indexed = coroutineScope {
             chunks.mapIndexed { i, chunk -> async { i to runCatching { resolveChunk(chunk) }.getOrDefault(emptyList()) } }.awaitAll()
         }
