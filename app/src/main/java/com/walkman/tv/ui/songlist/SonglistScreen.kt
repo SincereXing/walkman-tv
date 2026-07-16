@@ -32,6 +32,7 @@ import com.walkman.tv.data.model.SonglistTag
 import com.walkman.tv.data.model.SourceID
 import com.walkman.tv.data.model.Track
 import com.walkman.tv.ui.appContainer
+import com.walkman.tv.ui.fetchOr
 import com.walkman.tv.ui.components.EmptyHint
 import com.walkman.tv.ui.components.LoadingState
 import com.walkman.tv.ui.components.MediaCard
@@ -45,7 +46,13 @@ private val songlistSources = listOf(SourceID.KW, SourceID.WY, SourceID.KG, Sour
 fun SonglistScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     var source by remember { mutableStateOf(SourceID.KW) }
-    var order by remember { mutableStateOf<SonglistOrder?>(null) }
+    // Seed with the default source's first order (not null): the sibling effect below re-writes
+    // it with an *equal* value on first run, so mutableStateOf's structural equality skips the
+    // invalidation — the list effect runs exactly once on entry instead of fetch → cancel →
+    // refetch (the cancelled first fetch was the root of the empty-on-first-entry bug).
+    var order by remember {
+        mutableStateOf(appContainer.songlists.serviceFor(SourceID.KW)?.orders?.firstOrNull())
+    }
     var tags by remember { mutableStateOf<List<SonglistTag>>(listOf(SonglistTag.ALL)) }
     var tag by remember { mutableStateOf(SonglistTag.ALL) }
     var lists by remember { mutableStateOf<List<SonglistInfo>>(emptyList()) }
@@ -58,13 +65,13 @@ fun SonglistScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
     LaunchedEffect(source) {
         order = service?.orders?.firstOrNull()
         tag = SonglistTag.ALL
-        val groups = runCatching { service?.fetchTags() ?: emptyList() }.getOrDefault(emptyList())
+        val groups = fetchOr(emptyList()) { service?.fetchTags() ?: emptyList() }
         tags = listOf(SonglistTag.ALL) + groups.flatMap { it.tags }
     }
     LaunchedEffect(source, order, tag) {
         val o = order ?: return@LaunchedEffect
         loading = true
-        lists = runCatching { service?.fetchRecommended(o, tag, 1) ?: emptyList() }.getOrDefault(emptyList())
+        lists = fetchOr(emptyList()) { service?.fetchRecommended(o, tag, 1) ?: emptyList() }
         loading = false
     }
 
@@ -105,7 +112,7 @@ fun SonglistScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
                         MediaCard(title = sl.name, picURL = sl.picURL, subtitle = sl.playCount?.let { "▶ $it" }) {
                             scope.launch {
                                 loadingDetail = true
-                                val d = runCatching { service?.fetchDetail(sl) }.getOrNull()
+                                val d = fetchOr(null) { service?.fetchDetail(sl) }
                                 detail = sl to (d?.tracks ?: emptyList())
                                 loadingDetail = false
                             }

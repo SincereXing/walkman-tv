@@ -3,9 +3,27 @@ package com.walkman.tv.ui
 import com.walkman.tv.App
 import com.walkman.tv.data.model.Track
 import com.walkman.tv.di.AppContainer
+import kotlinx.coroutines.CancellationException
 
 /** Convenience accessor for the app-wide container from composables. */
 val appContainer: AppContainer get() = App.container
+
+/**
+ * Run a suspend fetch, mapping failures to [default] — but letting CancellationException
+ * propagate. Inside a LaunchedEffect, a plain `runCatching` swallows the cancellation thrown
+ * when the effect restarts on a key change; the doomed old coroutine then resumes past the
+ * catch and stomps the state its replacement just wrote (songlist page showing 暂无歌单 on
+ * first entry: the restarted fetch reused the warm connection and finished *before* the
+ * cancelled one's tail ran). Always use this instead of runCatching around fetches that
+ * write composition state.
+ */
+suspend fun <T> fetchOr(default: T, block: suspend () -> T): T = try {
+    block()
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    default
+}
 
 /**
  * Start playing [tracks] at [index] — unless the track at that index is already the current

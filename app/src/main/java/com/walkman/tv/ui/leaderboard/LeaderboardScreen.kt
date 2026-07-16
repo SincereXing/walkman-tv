@@ -27,6 +27,7 @@ import com.walkman.tv.data.model.BoardInfo
 import com.walkman.tv.data.model.SourceID
 import com.walkman.tv.data.model.Track
 import com.walkman.tv.ui.appContainer
+import com.walkman.tv.ui.fetchOr
 import com.walkman.tv.ui.components.EmptyHint
 import com.walkman.tv.ui.components.LoadingState
 import com.walkman.tv.ui.components.TrackList
@@ -45,14 +46,16 @@ fun LeaderboardScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
     var tracks by remember { mutableStateOf<List<Track>>(emptyList()) }
     var loadingTracks by remember { mutableStateOf(false) }
 
+    // fetchOr (not runCatching): a cancelled effect must die at the fetch, not swallow the
+    // CancellationException and stomp state its restarted replacement already wrote.
     LaunchedEffect(source) {
-        boards = runCatching { appContainer.boards.serviceFor(source)?.fetchBoards() ?: emptyList() }.getOrDefault(emptyList())
+        boards = fetchOr(emptyList()) { appContainer.boards.serviceFor(source)?.fetchBoards() ?: emptyList() }
         selected = boards.firstOrNull()
     }
     LaunchedEffect(selected) {
         val b = selected ?: return@LaunchedEffect
         loadingTracks = true
-        tracks = runCatching { appContainer.boards.serviceFor(b.source)?.fetchTracks(b.bangid, 1) ?: emptyList() }.getOrDefault(emptyList())
+        tracks = fetchOr(emptyList()) { appContainer.boards.serviceFor(b.source)?.fetchTracks(b.bangid, 1) ?: emptyList() }
         loadingTracks = false
     }
 
