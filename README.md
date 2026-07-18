@@ -7,7 +7,7 @@
   <a href="https://github.com/SincereXing/walkman-tv/releases"><img alt="downloads" src="https://img.shields.io/github/downloads/SincereXing/walkman-tv/total?label=downloads&color=3DDC84"></a>
   <img alt="platform" src="https://img.shields.io/badge/platform-Android%20TV-3DDC84">
   <img alt="language" src="https://img.shields.io/badge/Kotlin-Compose%20for%20TV-7F52FF">
-  <img alt="minSdk" src="https://img.shields.io/badge/minSdk-21-blue">
+  <img alt="minSdk" src="https://img.shields.io/badge/minSdk-23-blue">
   <img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-green">
   <img alt="built with" src="https://img.shields.io/badge/built%20with-Claude%20Code-d97757">
 </p>
@@ -20,7 +20,15 @@
 
 ## 📺 界面预览
 
-![全屏播放器：旋转黑胶 + 逐行歌词 + 波形进度 + Master/FLAC 24bit/192kHz 音质标识](docs/screenshots/player.png)
+![全屏播放器：旋转黑胶 + 逐行歌词 + 实时波形 + Master / FLAC 24bit/192kHz 音质标识](docs/screenshots/player-live.jpg)
+
+| 推荐首页：常驻正在播放面板 + 推荐卡片 | 搜索：多平台聚合 + MV/SQ/Hi-Res 角标 |
+|:--:|:--:|
+| ![推荐首页](docs/screenshots/home.jpg) | ![搜索页](docs/screenshots/search.jpg) |
+
+| 扫码搜索：电视出码，手机/电脑打开即输 | 手机端输入页（局域网直连，无需装 App） |
+|:--:|:--:|
+| ![扫码搜索弹窗](docs/screenshots/qr-search.jpg) | <img src="docs/screenshots/phone-input.jpg" alt="手机扫码输入页" width="280"> |
 
 ---
 
@@ -33,7 +41,7 @@
 - **`walkman-tv-x.y.z-armeabi-v7a-release.apk`** —— 老的 32 位 ARM 机型。
 - **`walkman-tv-x.y.z-x86_64-release.apk`** —— x86 盒子 / Android TV 模拟器。
 
-> 安装：`adb connect <电视IP>` 后 `adb install walkman-tv-x.y.z-universal-release.apk`；或把 APK 拷到 U 盘，用电视上的「文件管理器 / 安装包安装器」打开。首次安装需在系统设置里允许「未知来源 / 安装未知应用」。
+> 安装：`adb connect <电视IP>` 后 `adb install walkman-tv-x.y.z-universal-release.apk`；或把 APK 拷到 U 盘，用电视上的「文件管理器 / 安装包安装器」打开。首次安装需在系统设置里允许「未知来源 / 安装未知应用」。系统要求 Android 6.0+（minSdk 23）。
 
 ---
 
@@ -48,7 +56,7 @@
 | **我的列表** | 我的收藏、**播放历史**（自动记录、去重置顶）、自建歌单；本地 JSON 持久化 |
 | **下载** | 单曲 / **整单批量下载**（我的列表里「下载全部」，并发可配置、相同音质自动跳过、可选「按新音质重下」升级已下载）、多音质、文件夹分组、进度跟踪、断点状态恢复，并写入 **ID3v2.4 / FLAC** 元数据（标题/歌手/专辑/曲号/年份/封面/歌词）；**可在设置中选择下载目录**（内部存储 / SD 卡 / U 盘，或用系统文件夹选择器 SAF 指定任意可浏览文件夹） |
 | **本地导入** | 通过 SAF 选择文件夹递归扫描导入本地音乐（mp3 / flac / m4a / wav…），自动读取内嵌标签 |
-| **在线歌单导入** | 粘贴或扫码推送 **网易云 / QQ 音乐 / 酷狗 / 酷我** 的歌单分享链接，实时识别并一键导入为本地歌单 |
+| **在线歌单导入** | 粘贴或扫码推送 **网易云 / QQ 音乐 / 酷狗 / 酷我** 的歌单分享链接（含 iPhone 微信分享的新格式），实时识别并一键**全量导入**为本地歌单——几百上千首也完整拉取、不截断 |
 | **全屏播放器** | 模糊封面背景 + 旋转黑胶 + 逐行歌词 + 波形进度 + 传输控件 + 收藏；歌词字号可调（标准 / 大 / 最大） |
 | **MV** | 取各平台 MV 地址，用 ExoPlayer 在视频层播放 |
 | **设置 / 自定义源管理** | 音质偏好、发现页音源开关、内置直连兜底、歌词翻译、歌词大小，以及通过 **URL / 文件 / 扫码** 导入 lx-music v4 脚本 |
@@ -106,6 +114,7 @@
 | 设置项 | 作用 | 默认值 |
 |---|---|---|
 | **播放音质** | 全局**目标音质上限**。播放/下载时每首歌取「≤ 此档的最佳可用音质」，不支持则自动逐级降级（master → … → 128k）。 | `Hi-Res 24bit`（flac24bit） |
+| **音频硬件直通** | Hi-Res 音频经 DSP / HDMI 直通输出（audio offload），追求 bit-perfect。**部分电视（小米 / 鸿蒙 / 坚果等）音频驱动对此支持有缺陷，播放无损闪退时请关闭此项。** | 开 |
 | **发现页音源** | 推荐（首页）拉取数据用哪些平台，可多选开关（酷我 / 网易云 / 酷狗 / QQ）。至少保留一个。 | 四个全开 |
 | **内置直连兜底** | 自定义源脚本解析失败时，是否尝试 kw/wy 的内置直连兜底。 | 开 |
 | **歌词翻译** | 是否显示歌词的翻译行。 | 开 |
@@ -115,7 +124,7 @@
 | **批量下载 · 已下载的也按新音质重下** | 歌单「下载全部」时，已下载但音质与所选不同的歌是否按新音质重下（如 128k 升级 FLAC）；关闭则一律跳过已下载。 | 开 |
 | **自定义音源** | 导入 / 启停 / 删除 lx-music v4 脚本：粘贴 URL、直接粘贴脚本、上传 `.js`、或手机扫码操作。 | — |
 
-> 常见操作速查：**改默认下载/播放音质** → 「播放音质」；**推荐页只想看某个平台** → 「发现页音源」只留它；**下载太慢/想更快** → 「下载并发数」调大；**升级整张歌单的音质** → 确认「按新音质重下」开着，进歌单「下载全部」选高音质即可。
+> 常见操作速查：**改默认下载/播放音质** → 「播放音质」；**播无损歌曲闪退** → 先关「音频硬件直通」，仍闪退再把音质降到 320k；**推荐页只想看某个平台** → 「发现页音源」只留它；**下载太慢/想更快** → 「下载并发数」调大；**升级整张歌单的音质** → 确认「按新音质重下」开着，进歌单「下载全部」选高音质即可。
 
 ---
 
@@ -169,7 +178,7 @@ app/src/main/java/com/walkman/tv/
 
 ## 🚀 构建与运行
 
-环境：Android Studio（建议 JDK 17+），`compileSdk 35` / `minSdk 21` / `targetSdk 34`。
+环境：Android Studio（建议 JDK 17+），`compileSdk 36` / `minSdk 23` / `targetSdk 34`。
 
 ```bash
 # 1. 配置本机 SDK
