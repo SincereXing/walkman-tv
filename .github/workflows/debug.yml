@@ -35,9 +35,32 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload debug APKs
+      # One artifact per ABI so you can download just the APK you need instead of a
+      # bundled zip of all four (~4x the size).
+      - name: Upload arm64-v8a APK
         uses: actions/upload-artifact@v4
         with:
-          name: walkman-tv-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: walkman-tv-debug-arm64-v8a
+          path: app/build/outputs/apk/debug/*-arm64-v8a-debug.apk
+          if-no-files-found: error
+
+      - name: Upload armeabi-v7a APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: walkman-tv-debug-armeabi-v7a
+          path: app/build/outputs/apk/debug/*-armeabi-v7a-debug.apk
+          if-no-files-found: error
+
+      - name: Upload x86_64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: walkman-tv-debug-x86_64
+          path: app/build/outputs/apk/debug/*-x86_64-debug.apk
+          if-no-files-found: error
+
+      - name: Upload universal APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: walkman-tv-debug-universal
+          path: app/build/outputs/apk/debug/*-universal-debug.apk
           if-no-files-found: error
