@@ -6,6 +6,7 @@ app/build/
 .idea/
 *.iml
 local.properties
+claude.info
 
 # UI/UX skill caches
 .claude/skills/ui-ux-pro-max/scripts/__pycache__/
