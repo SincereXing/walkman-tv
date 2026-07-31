@@ -49,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
@@ -60,6 +61,7 @@ import com.walkman.tv.ui.components.QrDialog
 import com.walkman.tv.ui.components.TvFocusable
 import com.walkman.tv.ui.components.TvPill
 import com.walkman.tv.ui.theme.AppColors
+import com.walkman.tv.playback.update.UpdateState
 import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
@@ -407,6 +409,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 }
             }
         }
+
+        UpdateSection()
     }
 
     pendingDelete?.let { target ->
@@ -483,6 +487,70 @@ private fun importFromUrl(scope: kotlinx.coroutines.CoroutineScope, url: String,
             appContainer.scriptStore.import(raw).getOrThrow()
         }
         onStatus(result.fold({ "已导入：${it.name}" }, { "导入失败：${it.message}" }))
+    }
+}
+
+/**
+ * 检查更新: auto-checks GitHub once on open, then drives the whole download → install flow
+ * inline. State lives in [com.walkman.tv.playback.update.UpdateManager] so leaving and
+ * re-entering Settings resumes wherever it was (e.g. keeps a "有新版本" result).
+ */
+@Composable
+private fun UpdateSection() {
+    val ctx = LocalContext.current
+    val mgr = appContainer.updateManager
+    val state by mgr.state.collectAsState()
+    var permHint by remember { mutableStateOf(false) }
+
+    // Check + download run on the process-lived appScope (not a composable scope) so leaving
+    // Settings mid-flight doesn't cancel them — the StateFlow keeps progressing and the UI
+    // re-attaches to wherever it got to when the user comes back.
+    // Auto-check once — only from a clean Idle so re-entering Settings doesn't re-hit GitHub.
+    LaunchedEffect(Unit) {
+        if (mgr.state.value is UpdateState.Idle) appContainer.appScope.launch { mgr.check() }
+    }
+    // Note: auto-launching the installer on download-complete is handled globally in RootScreen
+    // (fires on any tab). Here we only offer a manual 立即安装 button as a fallback / retry.
+
+    Section("检查更新") {
+        Text("当前版本 v${mgr.currentVersion}", color = AppColors.TextSecondary, fontSize = 13.sp)
+        when (val s = state) {
+            is UpdateState.Idle ->
+                TvPill(onClick = { appContainer.appScope.launch { mgr.check() } }, selected = true) { Text("检查更新", fontSize = 14.sp) }
+            is UpdateState.Checking ->
+                Text("正在检查更新…", color = AppColors.TextMuted, fontSize = 13.sp)
+            is UpdateState.UpToDate ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("已是最新版本", color = AppColors.AccentGreen, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    TvPill(onClick = { appContainer.appScope.launch { mgr.check() } }) { Text("重新检查", fontSize = 13.sp) }
+                }
+            is UpdateState.Failed ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("检查失败：${s.message}", color = AppColors.Danger, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    TvPill(onClick = { appContainer.appScope.launch { mgr.check() } }) { Text("重试", fontSize = 13.sp) }
+                }
+            is UpdateState.Available ->
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("发现新版本 v${s.release.versionName}", color = AppColors.AccentGreen, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    if (s.release.notes.isNotBlank()) {
+                        Text(s.release.notes, color = AppColors.TextMuted, fontSize = 12.sp, maxLines = 6, overflow = TextOverflow.Ellipsis)
+                    }
+                    TvPill(onClick = { appContainer.appScope.launch { mgr.download(s.release) } }, selected = true) { Text("下载并安装", fontSize = 14.sp) }
+                }
+            is UpdateState.Downloading ->
+                Text("正在下载 ${(s.progress * 100).toInt()}%…", color = AppColors.AccentGreen, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            is UpdateState.Downloaded ->
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("下载完成", color = AppColors.AccentGreen, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    if (permHint) {
+                        Text(
+                            "请在系统弹出的设置里允许「随便听」安装未知应用，返回后再点「立即安装」。",
+                            color = AppColors.Warning, fontSize = 12.sp,
+                        )
+                    }
+                    TvPill(onClick = { permHint = !mgr.install(ctx, s.file) }, selected = true) { Text("立即安装", fontSize = 14.sp) }
+                }
+        }
     }
 }
 

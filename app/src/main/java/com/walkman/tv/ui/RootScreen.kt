@@ -45,6 +45,7 @@ import com.walkman.tv.ui.search.SearchScreen
 import com.walkman.tv.ui.settings.SettingsScreen
 import com.walkman.tv.ui.songlist.SonglistScreen
 import com.walkman.tv.ui.theme.AppColors
+import com.walkman.tv.playback.update.UpdateState
 
 @Composable
 fun RootScreen(modifier: Modifier = Modifier) {
@@ -64,6 +65,20 @@ fun RootScreen(modifier: Modifier = Modifier) {
     }.collectAsState(initial = NavPlaybackBits(null, null, false))
 
     LaunchedEffect(Unit) { runCatching { recommendFocus.requestFocus() } }
+
+    // In-app update: the moment a background download finishes — on ANY tab — hand the APK to
+    // the system installer. Lives at the root so it fires regardless of which screen shows.
+    // Map to just the downloaded File + distinctUntilChanged so the per-tick Downloading progress
+    // updates don't recompose the whole root (same guard as navBits above). Keyed install runs
+    // once per file.
+    val downloadedApk by remember {
+        appContainer.updateManager.state
+            .map { (it as? UpdateState.Downloaded)?.file }
+            .distinctUntilChanged()
+    }.collectAsState(initial = null)
+    LaunchedEffect(downloadedApk) {
+        downloadedApk?.let { appContainer.updateManager.install(context, it) }
+    }
 
     // Top-level back handler: non-Recommend sections jump back to Recommend; Recommend asks to exit.
     // Inner overlays (PlayerScreen / songlist-detail) register their own BackHandlers which take
