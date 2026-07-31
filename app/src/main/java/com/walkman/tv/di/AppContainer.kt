@@ -85,6 +85,11 @@ class AppContainer(val appContext: Context) {
         EqualizerManager { playbackController.audioSessionId }
     }
 
+    /** In-app updater — checks GitHub Releases, downloads the ABI-matched APK, launches install. */
+    val updateManager: com.walkman.tv.playback.update.UpdateManager by lazy {
+        com.walkman.tv.playback.update.UpdateManager(appContext, httpClient)
+    }
+
     val scriptStore: ScriptStore by lazy { ScriptStore(appContext, sourceManager) }
     val libraryStore: LibraryStore by lazy { LibraryStore(appContext) }
     val settingsStore: SettingsStore by lazy { SettingsStore(appContext) }
