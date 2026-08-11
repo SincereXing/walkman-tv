@@ -22,6 +22,9 @@ import java.io.File
  */
 class LocalServer private constructor(
     private val events: AppEvents,
+    // Returns hot-search columns as a JSON string: [{"source":"kw","name":"酷我","words":[...]}].
+    // Supplied by AppContainer; called on NanoHTTPD's worker thread (blocking is fine here).
+    private val hotSearchJson: () -> String,
     port: Int,
 ) : NanoHTTPD(port) {
 
@@ -51,6 +54,7 @@ class LocalServer private constructor(
     }
 
     private fun handleGet(session: IHTTPSession): Response = when (session.uri.trimEnd('/')) {
+        "/api/hotsearch" -> json(runCatching { hotSearchJson() }.getOrDefault("[]"))
         "/search" -> html(SEARCH_HTML)
         "/script" -> html(SCRIPT_HTML)
         "/playlist-name" -> html(PLAYLIST_NAME_HTML)
@@ -101,6 +105,9 @@ class LocalServer private constructor(
     private fun html(body: String): Response =
         newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", body)
 
+    private fun json(body: String): Response =
+        newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", body)
+
     private fun notFound(): Response =
         newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not Found")
 
@@ -108,9 +115,9 @@ class LocalServer private constructor(
         private const val TAG = "LocalServer"
 
         /** Start the local server, trying a small range of ports in case 8765 is busy. */
-        fun start(events: AppEvents): LocalServer? {
+        fun start(events: AppEvents, hotSearchJson: () -> String = { "[]" }): LocalServer? {
             for (port in listOf(8765, 8766, 8767, 8768)) {
-                val server = LocalServer(events, port)
+                val server = LocalServer(events, hotSearchJson, port)
                 if (server.tryStart()) return server
             }
             return null
@@ -151,14 +158,74 @@ class LocalServer private constructor(
         private val SEARCH_HTML = """
             <!doctype html><html><head><meta charset="utf-8">
             <meta name="viewport" content="width=device-width,initial-scale=1">
-            <title>搜索 · 随便听</title>$PAGE_CSS</head>
+            <title>搜索 · 随便听</title>$PAGE_CSS
+            <style>
+              .toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);
+                     background:#4ADE80;color:#0A0D14;font-weight:700;font-size:15px;
+                     padding:12px 22px;border-radius:24px;opacity:0;transition:opacity .25s;
+                     pointer-events:none;z-index:9;box-shadow:0 6px 20px rgba(0,0,0,.4);}
+              .toast.show{opacity:1;}
+              .hotcols{display:flex;gap:10px;}
+              .hotcol{flex:1;min-width:0;}
+              .hottitle{font-weight:700;font-size:14px;margin:0 0 8px;}
+              .hotword{display:flex;align-items:center;gap:8px;padding:9px 6px;
+                       border-radius:8px;cursor:pointer;font-size:14px;color:#fff;
+                       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+              .hotword:active{background:#1c2029;}
+              .rank{width:18px;color:#666;font-weight:700;flex:none;text-align:center;}
+              .rank.top{color:inherit;}
+            </style></head>
             <body>
+              <div id="toast" class="toast"></div>
               <h2>搜索歌曲</h2>
-              <p>输入要在电视上搜索的关键词，提交后电视会自动开始搜索。</p>
-              <form class="card" method="POST" action="/api/search">
-                <input name="q" placeholder="歌曲名 / 歌手 / 歌单" autofocus>
-                <button>发送到电视</button>
-              </form>
+              <p>输入关键词点发送，电视会自动开始搜索，发送后可继续搜下一个。也可点下方热搜词。</p>
+              <div class="card">
+                <input id="q" placeholder="歌曲名 / 歌手 / 歌单" autofocus>
+                <button onclick="send()">发送到电视</button>
+              </div>
+              <div id="hot"></div>
+              <script>
+                var TINT={kw:'#F26D4D',kg:'#1AB0F0',tx:'#33CC8C',wy:'#F24552'};
+                function toast(msg){
+                  var t=document.getElementById('toast');
+                  t.textContent=msg; t.className='toast show';
+                  setTimeout(function(){t.className='toast';},1600);
+                }
+                function send(){
+                  var q=document.getElementById('q').value.trim();
+                  if(!q) return;
+                  var body='q='+encodeURIComponent(q);
+                  fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body})
+                    .then(function(){toast('已发送到电视：'+q);})
+                    .catch(function(){toast('发送失败，请重试');});
+                }
+                function pick(w){
+                  document.getElementById('q').value=w;
+                  send();
+                }
+                document.getElementById('q').addEventListener('keydown',function(e){
+                  if(e.key==='Enter') send();
+                });
+                fetch('/api/hotsearch').then(function(r){return r.json();}).then(function(cols){
+                  var wrap=document.getElementById('hot');
+                  if(!cols||!cols.length) return;
+                  var h='<div class="card"><h2 style="margin-bottom:12px">热门搜索</h2><div class="hotcols">';
+                  cols.forEach(function(c){
+                    var tint=TINT[c.source]||'#4ADE80';
+                    h+='<div class="hotcol"><div class="hottitle" style="color:'+tint+'">'+c.name+'</div>';
+                    (c.words||[]).forEach(function(w,i){
+                      var rankCls=i<3?'rank top':'rank';
+                      var rankStyle=i<3?'color:'+tint:'';
+                      h+='<div class="hotword" onclick="pick(this.dataset.w)" data-w="'+w.replace(/"/g,'&quot;')+'">'
+                        +'<span class="'+rankCls+'" style="'+rankStyle+'">'+(i+1)+'</span>'
+                        +'<span style="overflow:hidden;text-overflow:ellipsis">'+w+'</span></div>';
+                    });
+                    h+='</div>';
+                  });
+                  h+='</div></div>';
+                  wrap.innerHTML=h;
+                });
+              </script>
             </body></html>
         """.trimIndent()
 

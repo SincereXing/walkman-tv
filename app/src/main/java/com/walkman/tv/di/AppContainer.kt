@@ -58,6 +58,7 @@ class AppContainer(val appContext: Context) {
     val catalogHttp by lazy { CatalogHttp(httpClient) }
 
     val catalogs by lazy { Catalogs(catalogHttp) }
+    val hotSearch by lazy { com.walkman.tv.source.catalog.HotSearch(catalogHttp) }
     val boards by lazy { Boards(catalogHttp) }
     val songlists by lazy { Songlists(catalogHttp) }
     /** Backs the recommend (discover) right column — heroes / recommendations / boards. */
@@ -158,6 +159,50 @@ class AppContainer(val appContext: Context) {
         }
     }
 
+    // Hot-search JSON cache for the phone page (/api/hotsearch). Fetched at most once per 5 min;
+    // called from NanoHTTPD's worker thread, so blocking here is fine.
+    @Volatile private var hotSearchCache: String = "[]"
+    @Volatile private var hotSearchCachedAt: Long = 0L
+
+    /** Blocking hot-search JSON: [{"source":"kw","name":"酷我","words":[...]}, ...]. */
+    private fun hotSearchJsonBlocking(): String {
+        val now = System.currentTimeMillis()
+        if (now - hotSearchCachedAt < 5 * 60_000L && hotSearchCache != "[]") return hotSearchCache
+        val json = runCatching {
+            kotlinx.coroutines.runBlocking {
+                val cols = hotSearch.fetchAll()
+                buildString {
+                    append('[')
+                    cols.forEachIndexed { i, col ->
+                        if (i > 0) append(',')
+                        append("{\"source\":\"").append(col.source.key)
+                        append("\",\"name\":\"").append(col.source.displayName)
+                        append("\",\"words\":[")
+                        col.words.forEachIndexed { j, w ->
+                            if (j > 0) append(',')
+                            append('"').append(jsonEscape(w)).append('"')
+                        }
+                        append("]}")
+                    }
+                    append(']')
+                }
+            }
+        }.getOrDefault("[]")
+        if (json != "[]") { hotSearchCache = json; hotSearchCachedAt = now }
+        return json
+    }
+
+    private fun jsonEscape(s: String): String = buildString {
+        for (c in s) when (c) {
+            '"' -> append("\\\"")
+            '\\' -> append("\\\\")
+            '\n' -> append("\\n")
+            '\r' -> append("\\r")
+            '\t' -> append("\\t")
+            else -> append(c)
+        }
+    }
+
     /** Fetch a remote text resource (used to import a custom-source script from a URL). */
     suspend fun fetchText(url: String): String = kotlinx.coroutines.withContext(Dispatchers.IO) {
         okhttp3.Request.Builder().url(url).build().let { req ->
@@ -172,7 +217,7 @@ class AppContainer(val appContext: Context) {
     fun bootstrap() {
         // Bring up the LAN HTTP server (best-effort; QR features just won't work if it fails).
         if (localServer == null) {
-            localServer = LocalServer.start(events)
+            localServer = LocalServer.start(events, hotSearchJson = { hotSearchJsonBlocking() })
         }
         appScope.launch {
             settingsStore.loadAll()

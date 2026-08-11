@@ -11,7 +11,7 @@ data class SonglistRef(val source: SourceID, val id: String)
 sealed class ImportError(message: String) : Throwable(message) {
     object UnrecognizedURL : ImportError("无法识别歌单链接，请粘贴酷我 / 酷狗 / QQ / 网易云的歌单分享链接")
     class FetchFailed(detail: String) : ImportError("获取歌单失败：$detail")
-    object EmptyPlaylist : ImportError("歌单为空或暂时无法读取")
+    object EmptyPlaylist : ImportError("歌单为空、私密或暂时无法读取（私密歌单需创建者设为公开后才能导入）")
 }
 
 data class ImportResult(val playlistId: String, val count: Int)

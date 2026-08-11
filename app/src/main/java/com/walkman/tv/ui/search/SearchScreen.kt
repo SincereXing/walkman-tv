@@ -62,6 +62,12 @@ fun SearchScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
     var loading by remember { mutableStateOf(false) }
     var searched by remember { mutableStateOf(false) }
     var showQr by remember { mutableStateOf(false) }
+    var hotColumns by remember { mutableStateOf<List<com.walkman.tv.source.catalog.HotSearchColumn>>(emptyList()) }
+
+    // Load hot-search words once when the screen first appears (before any search).
+    LaunchedEffect(Unit) {
+        hotColumns = runCatching { appContainer.hotSearch.fetchAll() }.getOrDefault(emptyList())
+    }
 
     fun runSearch() {
         if (query.isBlank()) return
@@ -139,8 +145,13 @@ fun SearchScreen(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
                 searched = searched,
                 songlists = songlists,
                 tracks = tracks,
+                hotColumns = hotColumns,
                 onOpenPlayer = onOpenPlayer,
                 onPickHistory = { kw ->
+                    query = kw
+                    runSearch()
+                },
+                onPickHot = { kw ->
                     query = kw
                     runSearch()
                 },
@@ -246,18 +257,27 @@ private fun ResultsPane(
     searched: Boolean,
     songlists: List<SonglistInfo>,
     tracks: List<Track>,
+    hotColumns: List<com.walkman.tv.source.catalog.HotSearchColumn>,
     onOpenPlayer: () -> Unit,
     onPickSonglist: (SonglistInfo) -> Unit,
     onPickHistory: (String) -> Unit = {},
+    onPickHot: (String) -> Unit = {},
 ) {
     val history by appContainer.searchHistoryStore.items.collectAsState()
     when {
         loading -> LoadingState(Modifier.fillMaxSize())
         !searched -> {
-            if (history.isEmpty()) {
-                EmptyHint("输入关键词开始搜索", Modifier.fillMaxSize())
-            } else {
-                SearchHistoryPane(history = history, onPick = onPickHistory)
+            // Before searching: recent-search chips (if any) on top, then the 4-column hot lists.
+            Column(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
+                if (history.isNotEmpty()) {
+                    SearchHistoryPane(history = history, onPick = onPickHistory)
+                    Spacer(Modifier.padding(top = 10.dp))
+                }
+                if (hotColumns.any { it.words.isNotEmpty() }) {
+                    HotSearchGrid(columns = hotColumns, onPick = onPickHot)
+                } else if (history.isEmpty()) {
+                    EmptyHint("输入关键词开始搜索", Modifier.fillMaxSize())
+                }
             }
         }
         songlists.isEmpty() && tracks.isEmpty() ->
@@ -307,13 +327,85 @@ private fun SectionHeader(text: String) {
     )
 }
 
+/** Brand tint per platform — matches the songlist/board source chips. */
+private fun sourceTint(source: SourceID): androidx.compose.ui.graphics.Color = when (source) {
+    SourceID.KW -> AppColors.SourceKw
+    SourceID.KG -> AppColors.SourceKg
+    SourceID.TX -> AppColors.SourceTx
+    SourceID.WY -> AppColors.SourceWy
+    else -> AppColors.TextSecondary
+}
+
+/**
+ * Hot-search: four platform columns side by side, each a rank-numbered, focusable list. Picking a
+ * word fills the query and searches immediately. Each column scrolls independently so a long list
+ * (e.g. Kuwo's 20) doesn't force the others tall.
+ */
+@Composable
+private fun HotSearchGrid(
+    columns: List<com.walkman.tv.source.catalog.HotSearchColumn>,
+    onPick: (String) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        SectionHeader("热门搜索")
+        Row(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            columns.forEach { col ->
+                Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    Text(
+                        col.source.displayName,
+                        color = sourceTint(col.source),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 6.dp, start = 4.dp),
+                    )
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        androidx.compose.foundation.lazy.itemsIndexed(col.words) { idx, word ->
+                            com.walkman.tv.ui.components.TvFocusable(
+                                onClick = { onPick(word) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "${idx + 1}",
+                                        color = if (idx < 3) sourceTint(col.source) else AppColors.TextMuted,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.width(22.dp),
+                                    )
+                                    Text(
+                                        word,
+                                        color = AppColors.TextPrimary,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** Recent-search chips. Rendered when the user hasn't searched yet but the store has entries.
  *  Wraps onto multiple lines via FlowRow so we don't horizontally clip long histories. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun SearchHistoryPane(history: List<String>, onPick: (String) -> Unit) {
     val scope = rememberCoroutineScope()
-    Column(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
+    // fillMaxWidth (not fillMaxSize): this pane now stacks above the hot-search grid, so it must
+    // wrap its content height instead of eating the whole column.
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "最近搜索",
