@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -361,10 +363,10 @@ private fun HotSearchGrid(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(bottom = 6.dp, start = 4.dp),
                     )
-                    androidx.compose.foundation.lazy.LazyColumn(
+                    LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        androidx.compose.foundation.lazy.itemsIndexed(col.words) { idx, word ->
+                        itemsIndexed(col.words) { idx, word ->
                             com.walkman.tv.ui.components.TvFocusable(
                                 onClick = { onPick(word) },
                                 modifier = Modifier.fillMaxWidth(),
