@@ -46,6 +46,17 @@ object CryptoBridge {
             ""
         }
 
+    /** Plain MD5 hex of [s] as-is — no URL-decode. Used by callers that sign already-built
+     *  strings (e.g. Kugou concept-version signature). */
+    fun str2md5Raw(s: String): String =
+        try {
+            MessageDigest.getInstance("MD5")
+                .digest(s.toByteArray(StandardCharsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
+        } catch (e: Exception) {
+            ""
+        }
+
     fun aesEncrypt(dataB64: String, keyB64: String, ivB64: String, mode: String): String =
         try {
             AES.encrypt(dataB64, keyB64, ivB64, mode) ?: ""

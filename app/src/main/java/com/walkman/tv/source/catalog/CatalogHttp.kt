@@ -28,6 +28,16 @@ class CatalogHttp(private val client: OkHttpClient) {
         return exec(Request.Builder().url(url).applyHeaders(headers).post(body).build())
     }
 
+    /** Follow redirects for [url] and return the final effective URL (for short-link expansion).
+     *  Returns null on failure. */
+    suspend fun resolveFinalUrl(url: String, headers: Map<String, String> = emptyMap()): String? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                client.newCall(Request.Builder().url(url).applyHeaders(headers).get().build())
+                    .execute().use { it.request.url.toString() }
+            }.getOrNull()
+        }
+
     private suspend fun exec(request: Request): String = withContext(Dispatchers.IO) {
         client.newCall(request).execute().use { resp ->
             if (!resp.isSuccessful) throw CatalogException("HTTP ${resp.code}")
