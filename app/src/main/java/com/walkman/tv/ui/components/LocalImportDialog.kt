@@ -224,11 +224,10 @@ fun LocalImportDialog(onDismiss: () -> Unit) {
                                         playlistName,
                                     ) { p -> progress = p }
                                 }.onSuccess { result ->
-                                    // Create a user playlist + dump the tracks in via LibraryStore.
+                                    // Create a user playlist + batch-dump the tracks (one write,
+                                    // not one per track — a big folder would otherwise O(n²) stall).
                                     val playlist = appContainer.libraryStore.createList(result.record.name)
-                                    result.tracks.forEach { t ->
-                                        appContainer.libraryStore.addToList(playlist.id, t)
-                                    }
+                                    appContainer.libraryStore.addAllToList(playlist.id, result.tracks)
                                     doneMessage = "✓ 导入完成，共 ${result.tracks.size} 首"
                                     importing = false
                                 }.onFailure { e ->
