@@ -165,15 +165,14 @@ class LocalServer private constructor(
                      padding:12px 22px;border-radius:24px;opacity:0;transition:opacity .25s;
                      pointer-events:none;z-index:9;box-shadow:0 6px 20px rgba(0,0,0,.4);}
               .toast.show{opacity:1;}
-              .hotgrp{margin-bottom:16px;}
-              .hottitle{font-weight:700;font-size:15px;margin:0 0 10px;}
-              .hotwords{display:flex;flex-wrap:wrap;gap:8px;}
-              .hotword{display:inline-flex;align-items:baseline;gap:6px;padding:8px 12px;
-                       border-radius:18px;cursor:pointer;font-size:14px;color:#fff;
-                       background:#0A0D14;border:1px solid #2A2D38;max-width:100%;}
+              .hotgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;}
+              .hotgrp{min-width:0;margin-top:10px;}
+              .hottitle{font-weight:700;font-size:14px;margin:0 0 6px;}
+              .hotword{display:flex;align-items:center;gap:8px;padding:8px 4px;
+                       cursor:pointer;font-size:14px;color:#fff;border-radius:8px;}
               .hotword:active{background:#1c2029;}
-              .hotword span.w{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-              .rank{font-weight:700;font-size:12px;color:#666;flex:none;}
+              .hotword .w{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+              .rank{width:16px;flex:none;text-align:center;font-weight:700;font-size:12px;color:#666;}
               .rank.top{color:inherit;}
             </style></head>
             <body>
@@ -210,20 +209,20 @@ class LocalServer private constructor(
                 fetch('/api/hotsearch').then(function(r){return r.json();}).then(function(cols){
                   var wrap=document.getElementById('hot');
                   if(!cols||!cols.length) return;
-                  var h='<div class="card"><h2 style="margin-bottom:12px">热门搜索</h2>';
+                  var h='<div class="card"><h2 style="margin-bottom:6px">热门搜索</h2><div class="hotgrid">';
                   cols.forEach(function(c){
                     if(!c.words||!c.words.length) return;
                     var tint=TINT[c.source]||'#4ADE80';
-                    h+='<div class="hotgrp"><div class="hottitle" style="color:'+tint+'">'+c.name+'</div><div class="hotwords">';
+                    h+='<div class="hotgrp"><div class="hottitle" style="color:'+tint+'">'+c.name+'</div>';
                     c.words.forEach(function(w,i){
                       var rankStyle=i<3?'color:'+tint:'';
                       h+='<div class="hotword" onclick="pick(this.dataset.w)" data-w="'+w.replace(/"/g,'&quot;')+'">'
                         +'<span class="rank'+(i<3?' top':'')+'" style="'+rankStyle+'">'+(i+1)+'</span>'
                         +'<span class="w">'+w+'</span></div>';
                     });
-                    h+='</div></div>';
+                    h+='</div>';
                   });
-                  h+='</div>';
+                  h+='</div></div>';
                   wrap.innerHTML=h;
                 });
               </script>
