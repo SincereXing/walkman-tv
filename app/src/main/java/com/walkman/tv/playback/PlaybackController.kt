@@ -378,6 +378,10 @@ class PlaybackController(
         }
         val effectivePreferred = qualityCap ?: preferredQuality
         _state.value = _state.value.copy(index = index, resolving = true, error = null, warning = null, isMv = false)
+        // Switch lyrics immediately with the metadata — lyrics depend only on the track, not the
+        // resolved play URL, so don't make them wait for (or hinge on) a successful audio resolve.
+        // Guarded to fresh attempts so a quality-cascade retry of the same track doesn't refetch.
+        if (qualityCap == null) loadLyrics(track)
         resolveJob?.cancel()
         resolveJob = scope.launch {
             // Local fast-path: downloaded tracks + SAF-imported tracks skip the online cascade.
@@ -453,7 +457,7 @@ class PlaybackController(
                     quality = r.quality,
                 )
                 onTrackStarted?.invoke(track)
-                loadLyrics(track)
+                // (lyrics already loaded in playAt when the track switched)
             }.onFailure { e ->
                 // Couldn't get a play URL for this track — auto-skip (or stop after too many).
                 failAndAdvance(e.message ?: "无法播放")
@@ -467,6 +471,10 @@ class PlaybackController(
      * reaches READY (see the player listener). Guarded so a user skipping mid-delay wins.
      */
     private fun failAndAdvance(reason: String) {
+        // Stop the stale audio: playAt keeps the previous track playing while it resolves the
+        // next one (for gapless switching). If the target failed, that old track would otherwise
+        // keep playing — halt it now so a failed switch actually goes silent.
+        runCatching { player.stop() }
         networkRetryCount = 0
         consecutiveFailures++
         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {

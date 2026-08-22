@@ -501,7 +501,6 @@ private fun UpdateSection() {
     val mgr = appContainer.updateManager
     val state by mgr.state.collectAsState()
     var permHint by remember { mutableStateOf(false) }
-    val actionFocus = remember { FocusRequester() }
 
     // Check + download run on the process-lived appScope (not a composable scope) so leaving
     // Settings mid-flight doesn't cancel them — the StateFlow keeps progressing and the UI
@@ -510,57 +509,63 @@ private fun UpdateSection() {
     LaunchedEffect(Unit) {
         if (mgr.state.value is UpdateState.Idle) appContainer.appScope.launch { mgr.check() }
     }
-    // When an update appears (or finishes downloading), pull focus onto its primary action button
-    // so the user isn't left with focus drifting to some unrelated control. Small delay lets the
-    // new button attach to the composition first.
-    LaunchedEffect(state::class) {
-        if (state is UpdateState.Available || state is UpdateState.Downloaded) {
-            kotlinx.coroutines.delay(80)
-            runCatching { actionFocus.requestFocus() }
-        }
-    }
-    // Note: auto-launching the installer on download-complete is handled globally in RootScreen
-    // (fires on any tab). Here we only offer a manual 立即安装 button as a fallback / retry.
+    // Note: auto-launching the installer on download-complete is handled globally in RootScreen.
 
     Section("检查更新") {
         Text("当前版本 v${mgr.currentVersion}", color = AppColors.TextSecondary, fontSize = 13.sp)
+
+        // Status line — plain text, no focusable, so it can freely swap per state.
         when (val s = state) {
-            is UpdateState.Idle ->
-                TvPill(onClick = { appContainer.appScope.launch { mgr.check() } }, selected = true) { Text("检查更新", fontSize = 14.sp) }
             is UpdateState.Checking ->
                 Text("正在检查更新…", color = AppColors.TextMuted, fontSize = 13.sp)
             is UpdateState.UpToDate ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("已是最新版本", color = AppColors.AccentGreen, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    TvPill(onClick = { appContainer.appScope.launch { mgr.check() } }) { Text("重新检查", fontSize = 13.sp) }
-                }
+                Text("已是最新版本", color = AppColors.AccentGreen, fontSize = 13.sp)
             is UpdateState.Failed ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("检查失败：${s.message}", color = AppColors.Danger, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    TvPill(onClick = { appContainer.appScope.launch { mgr.check() } }) { Text("重试", fontSize = 13.sp) }
+                Text("检查失败：${s.message}", color = AppColors.Danger, fontSize = 12.sp)
+            is UpdateState.Available -> {
+                Text("发现新版本 v${s.release.versionName}", color = AppColors.AccentGreen, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                if (s.release.notes.isNotBlank()) {
+                    Text(s.release.notes, color = AppColors.TextMuted, fontSize = 12.sp, maxLines = 6, overflow = TextOverflow.Ellipsis)
                 }
-            is UpdateState.Available ->
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("发现新版本 v${s.release.versionName}", color = AppColors.AccentGreen, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    if (s.release.notes.isNotBlank()) {
-                        Text(s.release.notes, color = AppColors.TextMuted, fontSize = 12.sp, maxLines = 6, overflow = TextOverflow.Ellipsis)
-                    }
-                    TvPill(onClick = { appContainer.appScope.launch { mgr.download(s.release) } }, selected = true, focusRequester = actionFocus) { Text("下载并安装", fontSize = 14.sp) }
+            }
+            is UpdateState.Downloaded -> {
+                Text("下载完成", color = AppColors.AccentGreen, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                if (permHint) {
+                    Text(
+                        "请在系统弹出的设置里允许「随便听」安装未知应用，返回后再点「立即安装」。",
+                        color = AppColors.Warning, fontSize = 12.sp,
+                    )
                 }
-            is UpdateState.Downloading ->
-                Text("正在下载 ${(s.progress * 100).toInt()}%…", color = AppColors.AccentGreen, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            is UpdateState.Downloaded ->
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("下载完成", color = AppColors.AccentGreen, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    if (permHint) {
-                        Text(
-                            "请在系统弹出的设置里允许「随便听」安装未知应用，返回后再点「立即安装」。",
-                            color = AppColors.Warning, fontSize = 12.sp,
-                        )
-                    }
-                    TvPill(onClick = { permHint = !mgr.install(ctx, s.file) }, selected = true, focusRequester = actionFocus) { Text("立即安装", fontSize = 14.sp) }
-                }
+            }
+            else -> {} // Idle / Downloading — the button label carries the state
         }
+
+        // ONE stable button: its label + action follow the state, but the composable node never
+        // leaves the tree — so remote focus stays put across 检查→检查中→有更新 transitions
+        // instead of drifting to some other control on the page.
+        val actionLabel = when (val s = state) {
+            is UpdateState.Checking -> "检查中…"
+            is UpdateState.UpToDate -> "重新检查"
+            is UpdateState.Failed -> "重试"
+            is UpdateState.Available -> "下载并安装"
+            is UpdateState.Downloading -> "正在下载 ${(s.progress * 100).toInt()}%…"
+            is UpdateState.Downloaded -> "立即安装"
+            is UpdateState.Idle -> "检查更新"
+        }
+        TvPill(
+            onClick = {
+                when (val s = state) {
+                    is UpdateState.Idle, is UpdateState.UpToDate, is UpdateState.Failed ->
+                        appContainer.appScope.launch { mgr.check() }
+                    is UpdateState.Available ->
+                        appContainer.appScope.launch { mgr.download(s.release) }
+                    is UpdateState.Downloaded ->
+                        permHint = !mgr.install(ctx, s.file)
+                    else -> {} // Checking / Downloading — busy, no-op
+                }
+            },
+            selected = true,
+        ) { Text(actionLabel, fontSize = 14.sp) }
     }
 }
 
