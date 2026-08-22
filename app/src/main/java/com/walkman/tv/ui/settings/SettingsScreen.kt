@@ -37,6 +37,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalContext
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
+import androidx.core.content.ContextCompat
+import com.walkman.tv.ui.components.FolderBrowser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.collectAsState
@@ -99,21 +104,38 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    // SAF folder picker for choosing a download directory (any browsable folder, incl. USB/SD).
-    val downloadFolderPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree(),
-    ) { uri: Uri? ->
-        if (uri != null) {
-            scope.launch {
+    // In-app File browser for the download folder (TVs often lack a SAF picker). Writing needs
+    // WRITE_EXTERNAL_STORAGE on API ≤ 29, or All-files access on 30+.
+    var showDownloadBrowser by remember { mutableStateOf(false) }
+    var dlPermHint by remember { mutableStateOf(false) }
+    val dlPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) showDownloadBrowser = true else dlPermHint = true }
+
+    fun openDownloadPicker() {
+        if (hasStorageWriteAccess(context)) {
+            showDownloadBrowser = true
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            dlPermHint = true
+            runCatching {
+                context.startActivity(
+                    android.content.Intent(
+                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:${context.packageName}"),
+                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }.onFailure {
                 runCatching {
-                    context.contentResolver.takePersistableUriPermission(
-                        uri,
-                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    context.startActivity(
+                        android.content.Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
                 }
-                appContainer.settingsStore.update { it.copy(customDownloadTreeUri = uri.toString()) }
             }
+        } else {
+            dlPermLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
     }
 
@@ -223,6 +245,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             val roots = remember { appContainer.downloadStore.availableRoots() }
             val treeUriStr = settings.customDownloadTreeUri
             val usingTree = treeUriStr != null
+            // A folder picked via the in-app browser is a customDownloadDir that isn't one of the
+            // app-scoped volume roots.
+            val usingCustomFolder = settings.customDownloadDir != null &&
+                roots.none { it.dir.absolutePath == settings.customDownloadDir }
             // Current volume = configured path, or the first volume (default) when unset. Only
             // highlighted when a SAF folder is NOT in use.
             val currentPath = settings.customDownloadDir
@@ -251,13 +277,21 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         Text(opt.label, fontSize = 13.sp)
                     }
                 }
-                // Pick any folder via the system folder picker (SAF) — incl. USB/SD subfolders.
+                // Pick any folder via the in-app browser (incl. USB/SD) — no SAF needed.
                 TvPill(
-                    onClick = { downloadFolderPicker.launch(null) },
-                    selected = usingTree,
+                    onClick = { openDownloadPicker() },
+                    selected = usingTree || usingCustomFolder,
                 ) {
                     Text("选择其他文件夹…", fontSize = 13.sp)
                 }
+            }
+            if (dlPermHint) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "需要存储写入权限：请在系统设置里为「随便听」开启文件访问（或允许存储权限），返回后再点选择。",
+                    color = AppColors.Warning,
+                    fontSize = 11.sp,
+                )
             }
             Spacer(Modifier.height(8.dp))
             Text(
@@ -266,13 +300,14 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         treeUriStr?.let { runCatching { appContainer.downloadStore.treeDisplayName(Uri.parse(it)) }.getOrNull() }
                             ?: "自定义文件夹"
                         )
+                    usingCustomFolder -> "已选文件夹：" + (settings.customDownloadDir ?: "")
                     else -> currentPath ?: "（应用默认音乐目录）"
                 },
                 color = AppColors.TextMuted,
                 fontSize = 11.sp,
             )
             Text(
-                if (usingTree) {
+                if (usingTree || usingCustomFolder) {
                     "下载会保存到你选的文件夹（可被文件管理器/其它应用浏览）。切换目录只影响之后的下载。"
                 } else {
                     "存储卷目录在应用专属空间（卸载会清除、不易在文件管理器看到）；想存到可见位置请点「选择其他文件夹」。切换只影响之后的下载，已下载的仍可正常播放。"
@@ -455,7 +490,33 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
         }
     }
+
+    if (showDownloadBrowser) {
+        FolderBrowser(
+            onPick = { dir ->
+                dlPermHint = false
+                showDownloadBrowser = false
+                scope.launch {
+                    appContainer.settingsStore.update {
+                        it.copy(customDownloadDir = dir.absolutePath, customDownloadTreeUri = null)
+                    }
+                }
+            },
+            onCancel = { showDownloadBrowser = false },
+        )
+    }
 }
+
+/** Whether we can write to arbitrary folders with java.io.File right now. */
+private fun hasStorageWriteAccess(ctx: android.content.Context): Boolean =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        Environment.isExternalStorageManager()
+    } else {
+        ContextCompat.checkSelfPermission(
+            ctx,
+            android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
 
 /**
  * Auto-detects the input: if it looks like an http(s) URL, fetches the URL and imports the

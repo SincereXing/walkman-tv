@@ -17,6 +17,7 @@
          READ_EXTERNAL_STORAGE covers API ≤ 32; MANAGE_EXTERNAL_STORAGE (All-files access) is
          needed on 30+ to browse arbitrary folders like USB drives. -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <application
