@@ -39,7 +39,11 @@ object SonglistImporter {
         SourceID.KG to listOf(
             Regex("kugou\\.com/songlist/(\\d+)", RegexOption.IGNORE_CASE),
             Regex("kugou\\.com[^\\s]*?[?&]listid=(\\d+)", RegexOption.IGNORE_CASE),
+            // 概念版：完整链接里带 global_specialid / global_collection_id=collection_..._2_0
+            Regex("[?&]global_(?:specialid|collection_id)=(collection_[0-9_]+)", RegexOption.IGNORE_CASE),
             Regex("kugou\\.com[^\\s]*?[?&]global_collection_id=([0-9A-Fa-f]+)", RegexOption.IGNORE_CASE),
+            // 概念版短链 t1.kugou.com/xxxx —— id 存整条短链，fetchDetail 联网解析成 collection_ id
+            Regex("(https?://t1\\.kugou\\.com/[0-9A-Za-z]+)", RegexOption.IGNORE_CASE),
         ),
         SourceID.KW to listOf(
             Regex("kuwo\\.cn[^\\s]*?/playlist_detail/(\\d+)", RegexOption.IGNORE_CASE),

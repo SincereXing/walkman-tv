@@ -40,6 +40,9 @@ class Songlists(private val http: CatalogHttp) {
 
 private const val UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"
 
+/** Kugou 概念版 signature signkey (from infSign.min.js). */
+private const val KG_CONCEPT_SIGNKEY = "NVPh5oo715z5DIWAeQlhMDsWXXQV4hwt"
+
 // MARK: - Kuwo
 
 private class KuwoSonglist(private val http: CatalogHttp) : SonglistService {
@@ -444,6 +447,20 @@ private class KugouSonglist(private val http: CatalogHttp) : SonglistService {
     }
 
     override suspend fun fetchDetail(list: SonglistInfo): SonglistDetail {
+        // 概念版短链（t1.kugou.com/xxx）：先联网跟随跳转，从最终 URL 抽出 collection_ id。
+        val effectiveId = if (list.id.startsWith("http", ignoreCase = true)) {
+            resolveConceptShortLink(list.id) ?: return SonglistDetail(list, emptyList())
+        } else {
+            list.id
+        }
+        // 概念版歌单（酷狗概念版 App 分享）的 id 形如 collection_3_2122406585_2_0，走独立的
+        // 签名分页接口；普通歌单仍走老的 single html 抓 hash。
+        if (effectiveId.startsWith("collection_")) {
+            val hashes = fetchConceptHashes(effectiveId)
+            if (hashes.isEmpty()) return SonglistDetail(list, emptyList())
+            val tracks = resolveHashes(hashes)
+            return SonglistDetail(list.copy(trackCount = tracks.size), tracks)
+        }
         val htmlUrl = "http://www2.kugou.kugou.com/yueku/v9/special/single/${list.id}-5-9999.html"
         val html = runCatching { http.getText(htmlUrl, mapOf("User-Agent" to kgUA)) }.getOrNull()
             ?: return SonglistDetail(list, emptyList())
@@ -451,6 +468,51 @@ private class KugouSonglist(private val http: CatalogHttp) : SonglistService {
         if (hashes.isEmpty()) return SonglistDetail(list, emptyList())
         val tracks = resolveHashes(hashes)
         return SonglistDetail(list.copy(trackCount = tracks.size), tracks)
+    }
+
+    /**
+     * Fetch all song hashes of a 概念版 collection via the signed `get_other_list_file` endpoint.
+     * Paginates until `count` is covered. Signature = md5(signkey + sortedKV.join + signkey) with
+     * the fixed 概念版 params (srcappid=2919 / clientver=20000). The `module` param is required —
+     * without it the server returns 参数错误.
+     */
+    private suspend fun fetchConceptHashes(collectionId: String): List<String> {
+        val out = mutableListOf<String>()
+        var page = 1
+        val pageSize = 300
+        while (page <= 20) { // hard cap 6000 songs; also broken out by count below
+            val n = System.currentTimeMillis().toString()
+            val params = sortedMapOf(
+                "srcappid" to "2919", "clientver" to "20000",
+                "clienttime" to n, "mid" to n, "uuid" to n, "dfid" to "-",
+                "global_collection_id" to collectionId, "type" to "0",
+                "page" to page.toString(), "pagesize" to pageSize.toString(),
+                "area_code" to "1", "module" to "CloudList",
+            )
+            val toSign = KG_CONCEPT_SIGNKEY + params.entries.joinToString("") { "${it.key}=${it.value}" } + KG_CONCEPT_SIGNKEY
+            val signature = com.walkman.tv.source.js.CryptoBridge.str2md5Raw(toSign)
+            val qs = params.entries.joinToString("&") { "${it.key}=${urlEncode(it.value)}" } + "&signature=$signature"
+            val json = runCatching {
+                JSONObject(http.getText("https://pubsongscdn.kugou.com/v2/get_other_list_file/getFileInfo?$qs", mapOf("User-Agent" to "Android712")))
+            }.getOrNull() ?: break
+            if (json.optInt("error_code") != 0) break
+            val data = json.optJSONObject("data") ?: break
+            val info = data.optJSONArray("info") ?: break
+            for (i in 0 until info.length()) {
+                info.optJSONObject(i)?.optString("hash")?.ifEmpty { null }?.uppercase()?.let(out::add)
+            }
+            val count = data.optInt("count").takeIf { it > 0 } ?: break
+            if (out.size >= count || info.length() == 0) break
+            page++
+        }
+        return out
+    }
+
+    /** Follow a t1.kugou.com short link and pull the concept collection id out of the final URL. */
+    private suspend fun resolveConceptShortLink(shortUrl: String): String? {
+        val finalUrl = http.resolveFinalUrl(shortUrl, mapOf("User-Agent" to UA)) ?: return null
+        return Regex("global_(?:specialid|collection_id)=(collection_[0-9_]+)", RegexOption.IGNORE_CASE)
+            .find(finalUrl)?.groupValues?.getOrNull(1)
     }
 
     private fun extractHashes(html: String): List<String> {
