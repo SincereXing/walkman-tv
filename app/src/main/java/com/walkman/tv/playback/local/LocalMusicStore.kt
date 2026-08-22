@@ -68,7 +68,7 @@ class LocalMusicStore(
         // 3) Extract per-file metadata + persist any embedded covers.
         val tracks = ArrayList<Track>(leaves.size)
         leaves.forEachIndexed { idx, (file, relPath) ->
-            val (track, cover) = readTrack(file, relPath, folderID)
+            val (track, cover) = readTrack(file.uri, relPath, folderID)
             tracks += track
             cover?.let { coverCache.put(track.id, it) }
             onProgress((idx + 1).toFloat() / leaves.size)
@@ -85,8 +85,44 @@ class LocalMusicStore(
     }
 
     /**
-     * Resolve a Track imported via [importFolder] back to a Uri. Returns null if the folder
-     * was deleted, permission was revoked, or the file moved.
+     * Import a plain filesystem folder (java.io.File) — the SAF-free path used on Android TVs that
+     * ship without a DocumentsUI picker. Needs storage read access (READ_EXTERNAL_STORAGE ≤ API 29,
+     * MANAGE_EXTERNAL_STORAGE on 30+); the caller gates that. The folder is anchored by a `file://`
+     * Uri so [fileUri] resolves playback straight off disk. Same tag-extraction as [importFolder].
+     */
+    suspend fun importFolderFile(
+        dir: java.io.File,
+        playlistName: String,
+        onProgress: (Float) -> Unit = {},
+    ): ImportResult = withContext(Dispatchers.IO) {
+        if (!dir.isDirectory) throw IllegalArgumentException("not a directory")
+        val folderID = java.util.UUID.randomUUID().toString()
+
+        val leaves = mutableListOf<Pair<java.io.File, String>>()
+        walkFile(dir, "", leaves)
+        leaves.sortBy { it.second.lowercase() }
+        if (leaves.isEmpty()) throw IllegalArgumentException("no audio files found")
+
+        val tracks = ArrayList<Track>(leaves.size)
+        leaves.forEachIndexed { idx, (file, relPath) ->
+            val (track, cover) = readTrack(Uri.fromFile(file), relPath, folderID)
+            tracks += track
+            cover?.let { coverCache.put(track.id, it) }
+            onProgress((idx + 1).toFloat() / leaves.size)
+        }
+
+        val record = LocalFolderRecord(
+            id = folderID,
+            name = playlistName.ifBlank { dir.name.ifBlank { "本地音乐" } },
+            persistedUriString = Uri.fromFile(dir).toString(),
+        )
+        localFolderStore.add(record)
+        ImportResult(record, tracks)
+    }
+
+    /**
+     * Resolve a Track imported via [importFolder] / [importFolderFile] back to a Uri. Returns null
+     * if the folder was deleted, permission was revoked, or the file moved.
      */
     fun fileUri(track: Track): Uri? {
         val songmid = track.songmid
@@ -98,6 +134,12 @@ class LocalMusicStore(
         val relPath = body.substring(slash + 1)
         val record = localFolderStore.find(folderID) ?: return null
         val rootUri = runCatching { Uri.parse(record.persistedUriString) }.getOrNull() ?: return null
+        // File-based folder (SAF-free import) — resolve straight off disk.
+        if (rootUri.scheme == "file") {
+            val rootPath = rootUri.path ?: return null
+            val f = java.io.File(rootPath, relPath)
+            return if (f.exists()) Uri.fromFile(f) else null
+        }
         val root = runCatching { DocumentFile.fromTreeUri(context, rootUri) }.getOrNull() ?: return null
         return findByPath(root, relPath.split('/'))?.uri
     }
@@ -132,6 +174,20 @@ class LocalMusicStore(
         }
     }
 
+    private fun walkFile(node: java.io.File, prefix: String, out: MutableList<Pair<java.io.File, String>>) {
+        val children = node.listFiles() ?: return
+        for (child in children) {
+            val name = child.name
+            val rel = if (prefix.isEmpty()) name else "$prefix/$name"
+            if (child.isDirectory) {
+                walkFile(child, rel, out)
+            } else if (child.isFile) {
+                val ext = name.substringAfterLast('.', "").lowercase()
+                if (ext in audioExtensions) out += child to rel
+            }
+        }
+    }
+
     private fun findByPath(node: DocumentFile, parts: List<String>): DocumentFile? {
         var current: DocumentFile? = node
         for (part in parts) {
@@ -148,7 +204,7 @@ class LocalMusicStore(
      *   2) EmbeddedTagReader byte-level (FLAC's Vorbis Comment is unreliable in MMR)
      *   3) Filename fallback for artist/title (with track-number-prefix guard)
      */
-    private fun readTrack(file: DocumentFile, relPath: String, folderID: String): Pair<Track, ByteArray?> {
+    private fun readTrack(fileUri: Uri, relPath: String, folderID: String): Pair<Track, ByteArray?> {
         val fileNameSansExt = relPath.substringAfterLast('/').substringBeforeLast('.', relPath)
         var title = fileNameSansExt
         var artist = ""
@@ -159,7 +215,7 @@ class LocalMusicStore(
         // 1) Native metadata extractor.
         runCatching {
             MediaMetadataRetriever().use { mmr ->
-                mmr.setDataSource(context, file.uri)
+                mmr.setDataSource(context, fileUri)
                 mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)?.takeIf { it.isNotBlank() }
                     ?.let { title = it }
                 mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)?.takeIf { it.isNotBlank() }
@@ -177,7 +233,7 @@ class LocalMusicStore(
         val needsCover = cover == null
         if (needsCover || needsFields) {
             runCatching {
-                context.contentResolver.openInputStream(file.uri)?.use { input ->
+                context.contentResolver.openInputStream(fileUri)?.use { input ->
                     val tags = EmbeddedTagReader.read(
                         input,
                         wantCover = needsCover,
