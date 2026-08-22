@@ -58,40 +58,60 @@ class UpdateManager(
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val state: StateFlow<UpdateState> = _state.asStateFlow()
 
-    /** Query GitHub for the latest release and compare against the installed version. */
+    /** Query GitHub for the latest release and compare against the installed version. Tries the
+     *  official api.github.com first, then GitHub proxies (for mainland China where the official
+     *  host is often blocked). */
     suspend fun check() {
         _state.value = UpdateState.Checking
-        _state.value = runCatching {
-            withContext(Dispatchers.IO) {
-                val req = Request.Builder()
-                    .url("https://api.github.com/repos/$OWNER/$REPO/releases/latest")
-                    .header("User-Agent", UA)               // GitHub 403s requests without a UA
-                    .header("Accept", "application/vnd.github+json")
-                    .build()
-                val body = http.newCall(req).execute().use { resp ->
-                    if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
-                    resp.body?.string() ?: throw IOException("空响应")
+        val apiUrl = "https://api.github.com/repos/$OWNER/$REPO/releases/latest"
+        // Official first, then proxies that can front api.github.com JSON.
+        val candidates = listOf(apiUrl) + API_PROXIES.map { it + apiUrl }
+        _state.value = withContext(Dispatchers.IO) {
+            var lastError: String? = null
+            for (url in candidates) {
+                val result = runCatching {
+                    val req = Request.Builder()
+                        .url(url)
+                        .header("User-Agent", UA)             // GitHub 403s requests without a UA
+                        .header("Accept", "application/vnd.github+json")
+                        .build()
+                    val body = http.newCall(req).execute().use { resp ->
+                        if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
+                        resp.body?.string() ?: throw IOException("空响应")
+                    }
+                    parseRelease(JSONObject(body))
                 }
-                parseRelease(JSONObject(body))
+                result.onSuccess { release ->
+                    return@withContext if (isNewer(release.versionName, currentVersion)) {
+                        UpdateState.Available(release)
+                    } else {
+                        UpdateState.UpToDate
+                    }
+                }
+                lastError = result.exceptionOrNull()?.message
+                Log.w(TAG, "check via $url failed: $lastError")
             }
-        }.fold(
-            { release -> if (isNewer(release.versionName, currentVersion)) UpdateState.Available(release) else UpdateState.UpToDate },
-            { e -> Log.w(TAG, "check failed", e); UpdateState.Failed(e.message ?: "检查更新失败") },
-        )
+            UpdateState.Failed(lastError ?: "检查更新失败")
+        }
     }
 
-    /** Stream the chosen APK into the app cache, reporting progress via [UpdateState.Downloading]. */
+    /** Stream the chosen APK into the app cache, reporting progress. Tries the official GitHub
+     *  download URL first, then each proxy in turn (mainland China fallback). */
     suspend fun download(release: AppRelease) {
         _state.value = UpdateState.Downloading(0f)
         val dest = File(File(appContext.cacheDir, "update"), "walkman-tv-${release.versionName}.apk")
-        _state.value = runCatching {
-            withContext(Dispatchers.IO) {
-                downloadTo(release.apkUrl, dest) { p -> _state.value = UpdateState.Downloading(p) }
+        // Official first, then proxies.
+        val candidates = listOf(release.apkUrl) + DOWNLOAD_PROXIES.map { it + release.apkUrl }
+        _state.value = withContext(Dispatchers.IO) {
+            var lastError: String? = null
+            for ((idx, url) in candidates.withIndex()) {
+                _state.value = UpdateState.Downloading(0f) // reset bar for each attempt
+                val result = runCatching { downloadTo(url, dest) { p -> _state.value = UpdateState.Downloading(p) } }
+                if (result.isSuccess) return@withContext UpdateState.Downloaded(dest, release)
+                lastError = result.exceptionOrNull()?.message
+                Log.w(TAG, "download attempt ${idx + 1}/${candidates.size} via $url failed: $lastError")
             }
-            UpdateState.Downloaded(dest, release)
-        }.getOrElse { e ->
-            Log.w(TAG, "download failed", e)
-            UpdateState.Failed(e.message ?: "下载失败")
+            UpdateState.Failed(lastError ?: "下载失败")
         }
     }
 
@@ -198,6 +218,20 @@ class UpdateManager(
         private const val OWNER = "SincereXing"
         private const val REPO = "walkman-tv"
         private const val UA = "walkman-tv-updater"
+
+        // GitHub proxy prefixes for mainland China (official host is often blocked/slow). Prefix
+        // form: "<proxy>/https://github.com/...". Verified reachable at release time; if one dies
+        // the manager just falls through to the next. Download proxies front release binaries;
+        // API_PROXIES additionally proxy api.github.com JSON (fewer of them do).
+        private val DOWNLOAD_PROXIES = listOf(
+            "https://ghfast.top/",
+            "https://gh-proxy.com/",
+            "https://ghproxy.net/",
+            "https://gh.ddlc.top/",
+        )
+        private val API_PROXIES = listOf(
+            "https://gh-proxy.com/",
+        )
 
         /** Dotted numeric compare: "1.3.10" > "1.3.2". Non-numeric parts count as 0. */
         fun isNewer(remote: String, current: String): Boolean {

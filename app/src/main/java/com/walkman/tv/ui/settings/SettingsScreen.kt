@@ -501,6 +501,7 @@ private fun UpdateSection() {
     val mgr = appContainer.updateManager
     val state by mgr.state.collectAsState()
     var permHint by remember { mutableStateOf(false) }
+    val actionFocus = remember { FocusRequester() }
 
     // Check + download run on the process-lived appScope (not a composable scope) so leaving
     // Settings mid-flight doesn't cancel them — the StateFlow keeps progressing and the UI
@@ -508,6 +509,15 @@ private fun UpdateSection() {
     // Auto-check once — only from a clean Idle so re-entering Settings doesn't re-hit GitHub.
     LaunchedEffect(Unit) {
         if (mgr.state.value is UpdateState.Idle) appContainer.appScope.launch { mgr.check() }
+    }
+    // When an update appears (or finishes downloading), pull focus onto its primary action button
+    // so the user isn't left with focus drifting to some unrelated control. Small delay lets the
+    // new button attach to the composition first.
+    LaunchedEffect(state::class) {
+        if (state is UpdateState.Available || state is UpdateState.Downloaded) {
+            kotlinx.coroutines.delay(80)
+            runCatching { actionFocus.requestFocus() }
+        }
     }
     // Note: auto-launching the installer on download-complete is handled globally in RootScreen
     // (fires on any tab). Here we only offer a manual 立即安装 button as a fallback / retry.
@@ -535,7 +545,7 @@ private fun UpdateSection() {
                     if (s.release.notes.isNotBlank()) {
                         Text(s.release.notes, color = AppColors.TextMuted, fontSize = 12.sp, maxLines = 6, overflow = TextOverflow.Ellipsis)
                     }
-                    TvPill(onClick = { appContainer.appScope.launch { mgr.download(s.release) } }, selected = true) { Text("下载并安装", fontSize = 14.sp) }
+                    TvPill(onClick = { appContainer.appScope.launch { mgr.download(s.release) } }, selected = true, focusRequester = actionFocus) { Text("下载并安装", fontSize = 14.sp) }
                 }
             is UpdateState.Downloading ->
                 Text("正在下载 ${(s.progress * 100).toInt()}%…", color = AppColors.AccentGreen, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -548,7 +558,7 @@ private fun UpdateSection() {
                             color = AppColors.Warning, fontSize = 12.sp,
                         )
                     }
-                    TvPill(onClick = { permHint = !mgr.install(ctx, s.file) }, selected = true) { Text("立即安装", fontSize = 14.sp) }
+                    TvPill(onClick = { permHint = !mgr.install(ctx, s.file) }, selected = true, focusRequester = actionFocus) { Text("立即安装", fontSize = 14.sp) }
                 }
         }
     }
