@@ -80,6 +80,12 @@ class PlaybackController(
      *  successful play, on a fresh playAt(), or once we've given up and skipped to next. */
     private var networkRetryCount: Int = 0
 
+    /** Number of consecutive *tracks* that have failed back-to-back (resolve failed or an
+     *  unrecoverable player error). Auto-skip to next on each failure; stop only once this hits
+     *  [MAX_CONSECUTIVE_FAILURES]. Reset to 0 when any track actually reaches READY, and on a
+     *  fresh user-initiated queue. Distinct from [networkRetryCount], which retries one track. */
+    private var consecutiveFailures: Int = 0
+
     /**
      * Optional local-first URL resolver. When set, [playAt] checks it before going to
      * [SourceManager]. Wired by [com.walkman.tv.di.AppContainer] to point at
@@ -137,6 +143,10 @@ class PlaybackController(
             PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
         )
         const val MAX_NETWORK_RETRIES = 3
+
+        /** Stop auto-skipping once this many tracks fail back-to-back (a whole playlist of dead
+         *  links shouldn't spin forever). */
+        const val MAX_CONSECUTIVE_FAILURES = 3
 
         /**
          * Build the ExoPlayer with settings tuned for music playback on Android TV:
@@ -254,6 +264,8 @@ class PlaybackController(
                     if (_state.value.isMv) exitMv() else handleEnded()
                 }
                 if (playbackState == Player.STATE_READY) {
+                    // A track actually started — clear the consecutive-failure streak.
+                    consecutiveFailures = 0
                     _state.value = _state.value.copy(durationMs = player.duration.coerceAtLeast(0))
                 }
             }
@@ -305,26 +317,17 @@ class PlaybackController(
                         }
                         return
                     }
-                    // Retries exhausted — surface as a passing warning and skip to next.
+                    // Retries exhausted — this track has failed; auto-skip (counts toward the
+                    // consecutive-failure limit).
                     android.util.Log.w(
                         "PlaybackController",
                         "network retries exhausted on ${track.name}; skipping to next",
                     )
-                    networkRetryCount = 0
-                    _state.value = _state.value.copy(
-                        warning = "网络不稳定，已跳过 ${track.name}",
-                        resolving = false,
-                        error = null,
-                    )
-                    scope.launch {
-                        kotlinx.coroutines.delay(400)
-                        next()
-                    }
+                    failAndAdvance("网络不稳定")
                     return
                 }
-                // Other errors — surface and stop.
-                networkRetryCount = 0
-                _state.value = _state.value.copy(error = "播放失败: ${error.errorCodeName}", resolving = false)
+                // Any other error — this track failed; auto-skip (or stop after too many in a row).
+                failAndAdvance(error.errorCodeName)
             }
         })
         startPositionTicker()
@@ -334,6 +337,7 @@ class PlaybackController(
 
     fun setQueue(tracks: List<Track>, startIndex: Int = 0, autoPlay: Boolean = true) {
         if (tracks.isEmpty()) return
+        consecutiveFailures = 0 // fresh user-initiated queue — start the failure streak over
         _state.value = _state.value.copy(queue = tracks, index = startIndex.coerceIn(0, tracks.size - 1))
         if (autoPlay) playAt(_state.value.index)
     }
@@ -394,10 +398,7 @@ class PlaybackController(
             runCatching { playResolvedOrFail(track, resolved) }
                 .onFailure { e ->
                     android.util.Log.e("PlaybackController", "playAt crashed", e)
-                    _state.value = _state.value.copy(
-                        resolving = false,
-                        error = "播放出错: ${e.message ?: e::class.simpleName}",
-                    )
+                    failAndAdvance(e.message ?: e::class.simpleName ?: "播放出错")
                 }
         }
     }
@@ -454,11 +455,41 @@ class PlaybackController(
                 onTrackStarted?.invoke(track)
                 loadLyrics(track)
             }.onFailure { e ->
-                _state.value = _state.value.copy(
-                    resolving = false,
-                    error = e.message ?: "无法播放",
-                )
+                // Couldn't get a play URL for this track — auto-skip (or stop after too many).
+                failAndAdvance(e.message ?: "无法播放")
             }
+    }
+
+    /**
+     * A track has definitively failed (couldn't resolve a URL, or an unrecoverable player error).
+     * Auto-skip to the next track so the queue keeps going; only stop once
+     * [MAX_CONSECUTIVE_FAILURES] tracks fail back-to-back. The streak resets when any track
+     * reaches READY (see the player listener). Guarded so a user skipping mid-delay wins.
+     */
+    private fun failAndAdvance(reason: String) {
+        networkRetryCount = 0
+        consecutiveFailures++
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            consecutiveFailures = 0
+            _state.value = _state.value.copy(
+                error = "连续 $MAX_CONSECUTIVE_FAILURES 首播放失败，已停止（$reason）",
+                resolving = false,
+                warning = null,
+            )
+            return
+        }
+        _state.value = _state.value.copy(
+            warning = "播放失败，自动播放下一首（$reason）",
+            resolving = false,
+            error = null,
+        )
+        val failedId = _state.value.currentTrack?.id
+        scope.launch {
+            delay(400)
+            // Only auto-advance if we're still parked on the track that failed (the user may
+            // have manually picked another song during the delay).
+            if (_state.value.currentTrack?.id == failedId) next()
+        }
     }
 
     /**
