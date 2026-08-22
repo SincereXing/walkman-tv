@@ -2,8 +2,14 @@ package com.walkman.tv.ui.components
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import java.io.File
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,25 +59,50 @@ import kotlinx.coroutines.launch
 @Composable
 fun LocalImportDialog(onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var pickedUri by remember { mutableStateOf<Uri?>(null) }
+    val ctx = LocalContext.current
+    var pickedFile by remember { mutableStateOf<File?>(null) }
     var playlistName by remember { mutableStateOf("") }
     var progress by remember { mutableStateOf(0f) }
     var importing by remember { mutableStateOf(false) }
     var doneMessage by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showBrowser by remember { mutableStateOf(false) }
+    var permHint by remember { mutableStateOf(false) }
     // Default focus = 选择文件夹 since that's step 1 in the flow.
     val pickerFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { pickerFocus.requestFocus() } }
 
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree(),
-    ) { uri ->
-        if (uri != null) {
-            pickedUri = uri
-            if (playlistName.isBlank()) {
-                playlistName = uri.lastPathSegment?.substringAfter(":")?.substringAfterLast('/')
-                    ?: "本地音乐"
+    // Uses an in-app File browser (not SAF): many TVs have no DocumentsUI picker. Needs storage
+    // read access first — READ_EXTERNAL_STORAGE on API ≤ 29, All-files access on 30+.
+    val permLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) showBrowser = true else permHint = true }
+
+    fun openPicker() {
+        if (hasStorageAccess(ctx)) {
+            showBrowser = true
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Route to the per-app "All files access" screen; user grants, returns, taps again.
+            permHint = true
+            runCatching {
+                ctx.startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:${ctx.packageName}"),
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }.onFailure {
+                runCatching {
+                    ctx.startActivity(
+                        Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
             }
+        } else {
+            permLauncher.launch(android.Manifest.permission.READ_EXTERNAL_STORAGE)
         }
     }
 
@@ -98,15 +129,23 @@ fun LocalImportDialog(onDismiss: () -> Unit) {
             Text("文件夹", color = AppColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.size(6.dp))
             TvPill(
-                onClick = { launcher.launch(null) },
+                onClick = { openPicker() },
                 focusRequester = pickerFocus,
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
             ) {
                 Text(
-                    pickedUri?.lastPathSegment ?: "选择文件夹…",
+                    pickedFile?.name ?: "选择文件夹…",
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (permHint) {
+                Spacer(Modifier.size(6.dp))
+                Text(
+                    "需要存储访问权限：请在系统设置里为「随便听」开启文件访问（或允许存储权限），然后返回再点选择文件夹。",
+                    color = AppColors.Warning,
+                    fontSize = 12.sp,
                 )
             }
             Spacer(Modifier.size(12.dp))
@@ -174,22 +213,21 @@ fun LocalImportDialog(onDismiss: () -> Unit) {
                 if (doneMessage == null) {
                     TvPill(
                         onClick = {
-                            val uri = pickedUri ?: return@TvPill
+                            val dir = pickedFile ?: return@TvPill
                             if (importing) return@TvPill
                             importing = true
                             error = null
                             scope.launch {
                                 runCatching {
-                                    appContainer.localMusicStore.importFolder(
-                                        uri,
+                                    appContainer.localMusicStore.importFolderFile(
+                                        dir,
                                         playlistName,
                                     ) { p -> progress = p }
                                 }.onSuccess { result ->
-                                    // Create a user playlist + dump the tracks in via LibraryStore.
+                                    // Create a user playlist + batch-dump the tracks (one write,
+                                    // not one per track — a big folder would otherwise O(n²) stall).
                                     val playlist = appContainer.libraryStore.createList(result.record.name)
-                                    result.tracks.forEach { t ->
-                                        appContainer.libraryStore.addToList(playlist.id, t)
-                                    }
+                                    appContainer.libraryStore.addAllToList(playlist.id, result.tracks)
                                     doneMessage = "✓ 导入完成，共 ${result.tracks.size} 首"
                                     importing = false
                                 }.onFailure { e ->
@@ -198,7 +236,7 @@ fun LocalImportDialog(onDismiss: () -> Unit) {
                                 }
                             }
                         },
-                        selected = pickedUri != null && !importing,
+                        selected = pickedFile != null && !importing,
                         contentPadding = PaddingValues(horizontal = 22.dp, vertical = 8.dp),
                     ) {
                         Text("确定导入", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -207,4 +245,27 @@ fun LocalImportDialog(onDismiss: () -> Unit) {
             }
         }
     }
+
+    if (showBrowser) {
+        FolderBrowser(
+            onPick = { dir ->
+                pickedFile = dir
+                if (playlistName.isBlank()) playlistName = dir.name.ifBlank { "本地音乐" }
+                permHint = false
+                showBrowser = false
+            },
+            onCancel = { showBrowser = false },
+        )
+    }
 }
+
+/** Whether we can browse arbitrary folders with java.io.File right now. */
+private fun hasStorageAccess(ctx: android.content.Context): Boolean =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        Environment.isExternalStorageManager()
+    } else {
+        ContextCompat.checkSelfPermission(
+            ctx,
+            android.Manifest.permission.READ_EXTERNAL_STORAGE,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }

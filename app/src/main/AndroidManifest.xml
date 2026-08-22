@@ -13,6 +13,11 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- In-app update: install the downloaded APK via the system package installer -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Local music import via the built-in File browser (TVs often lack a SAF picker).
+         READ_EXTERNAL_STORAGE covers API ≤ 32; MANAGE_EXTERNAL_STORAGE (All-files access) is
+         needed on 30+ to browse arbitrary folders like USB drives. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <application
       android:name=".App"
