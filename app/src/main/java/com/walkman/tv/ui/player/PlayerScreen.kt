@@ -814,6 +814,8 @@ private fun LyricPane(
           line.text,
           color = if (isActive) AppColors.LyricActive else AppColors.TextSecondary,
           fontSize = if (isActive) lyricSize.activeSp.sp else lyricSize.inactiveSp.sp,
+          // 显式行高：默认行高跟不上大字号，长歌词换行时上下两行会重叠（#21）。
+          lineHeight = ((if (isActive) lyricSize.activeSp else lyricSize.inactiveSp) * 1.3f).sp,
           fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
           textAlign = TextAlign.Center,
           modifier = Modifier.alpha(a),
@@ -823,6 +825,7 @@ private fun LyricPane(
             it,
             color = if (isActive) AppColors.LyricActive.copy(alpha = 0.7f) else AppColors.TextMuted,
             fontSize = lyricSize.translationSp.sp,
+            lineHeight = (lyricSize.translationSp * 1.3f).sp,
             textAlign = TextAlign.Center,
             modifier = Modifier.alpha(a),
           )
