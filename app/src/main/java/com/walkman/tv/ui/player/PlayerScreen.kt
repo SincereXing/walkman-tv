@@ -580,7 +580,8 @@ private fun TransportBar(
   val faveFocus = remember { FocusRequester() }
   val hasQuality = state.quality != null
 
-  Box(modifier = Modifier.fillMaxWidth()) {
+  // 控制栏是浮层最底部，向下同样拦住，免得焦点漏到被盖住的主界面。
+  Box(modifier = Modifier.fillMaxWidth().focusProperties { down = FocusRequester.Cancel }) {
     Row(
       modifier = Modifier.align(Alignment.CenterStart),
       verticalAlignment = Alignment.CenterVertically,
@@ -726,6 +727,9 @@ private fun ProgressBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Un
   Column(
     modifier = Modifier
       .fillMaxWidth()
+      // 播放页是盖在主界面上的浮层，进度条上方没有可聚焦控件；不拦住的话再按上键焦点会
+      // 穿到被盖住的顶部导航，之后怎么按都回不来。
+      .focusProperties { up = FocusRequester.Cancel }
       .onFocusChanged { fs ->
         focused = fs.isFocused
         if (!fs.isFocused && scrubDir != 0) commit()
