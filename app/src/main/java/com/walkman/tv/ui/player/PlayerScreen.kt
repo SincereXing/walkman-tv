@@ -686,6 +686,7 @@ private const val SCRUB_MAX_PER_SEC = 60_000f
 private const val SCRUB_ACCEL_PER_SEC2 = 40_000f
 private const val SCRUB_RELEASE_TIMEOUT_MS = 1_000L
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun ProgressBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) {
   var focused by remember { mutableStateOf(false) }
