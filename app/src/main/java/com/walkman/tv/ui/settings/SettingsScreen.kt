@@ -216,9 +216,12 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        Section("音频硬件直通") {
+        Section("音频解码") {
             ToggleRow("Hi-Res 硬件直通（播放无损闪退时请关闭）", settings.audioOffloadEnabled) {
                 scope.launch { appContainer.settingsStore.update { it.copy(audioOffloadEnabled = !it.audioOffloadEnabled) } }
+            }
+            ToggleRow("强制软件解码（播放闪退或没声音时请开启，下一首起生效）", settings.forceSoftwareDecoding) {
+                scope.launch { appContainer.settingsStore.update { it.copy(forceSoftwareDecoding = !it.forceSoftwareDecoding) } }
             }
         }
 

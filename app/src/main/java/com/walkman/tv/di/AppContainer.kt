@@ -224,7 +224,9 @@ class AppContainer(val appContext: Context) {
             libraryStore.loadAll()
             settingsStore.settings.onEach { s ->
                 playbackController.preferredQuality = s.preferredQuality
-                playbackController.setAudioOffloadEnabled(s.audioOffloadEnabled)
+                // 硬件直通会把未解码的数据直接交给音频硬件，绕过解码器；强制软解时一并关掉。
+                playbackController.setAudioOffloadEnabled(s.audioOffloadEnabled && !s.forceSoftwareDecoding)
+                playbackController.forceSoftwareDecoding = s.forceSoftwareDecoding
                 sourceManager.fallbackEnabled = s.fallbackEnabled
                 downloadStore.configuredRoot = s.customDownloadDir?.let { java.io.File(it) }
                 downloadStore.downloadTreeUri = s.customDownloadTreeUri?.let { runCatching { android.net.Uri.parse(it) }.getOrNull() }

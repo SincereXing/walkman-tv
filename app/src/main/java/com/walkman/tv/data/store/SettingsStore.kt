@@ -40,6 +40,9 @@ data class Settings(
      *  settings toggle lets affected users turn it off. Default on so existing users keep
      *  the current behaviour. */
     val audioOffloadEnabled: Boolean = true,
+    /** 强制软件解码（音频）。部分电视、盒子的硬件解码器会闪退或没声音，开启后只用系统软件解码器，
+     *  同时关闭硬件直通。默认关闭。 */
+    val forceSoftwareDecoding: Boolean = false,
     val showLyricTranslation: Boolean = true,
     val lyricSize: LyricSize = LyricSize.STANDARD,
     val vinylColor: VinylColor = VinylColor.GREEN,
