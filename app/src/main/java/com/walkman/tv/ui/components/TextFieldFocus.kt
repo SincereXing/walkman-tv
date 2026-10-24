@@ -5,6 +5,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -30,6 +31,26 @@ fun Modifier.leaveFieldOnBack(): Modifier {
         if (event.key != Key.Back) return@onInterceptKeyBeforeSoftKeyboard false
         // Consume both down and up so the dialog doesn't also dismiss on this press.
         if (event.type == KeyEventType.KeyUp) leaveField(focusManager, keyboard)
+        true
+    }
+}
+
+/**
+ * Makes DPAD Right leave the text field for an explicitly chosen neighbouring control.
+ * Text fields normally consume the key to move the cursor, so TV focus search never sees it.
+ * Intercept both phases before the IME and move focus on KeyUp to keep the release event from
+ * leaking to the newly focused control.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+fun Modifier.leaveFieldOnDpadRight(target: FocusRequester): Modifier {
+    val keyboard = LocalSoftwareKeyboardController.current
+    return onInterceptKeyBeforeSoftKeyboard { event ->
+        if (event.key != Key.DirectionRight) return@onInterceptKeyBeforeSoftKeyboard false
+        if (event.type == KeyEventType.KeyUp) {
+            runCatching { keyboard?.hide() }
+            target.requestFocus()
+        }
         true
     }
 }

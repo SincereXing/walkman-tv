@@ -160,4 +160,14 @@ dependencies {
     // Phone-to-TV QR flow: tiny in-app HTTP server + QR encoder
     implementation "org.nanohttpd:nanohttpd:2.3.1"
     implementation "com.google.zxing:core:3.5.3"
+
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.json:json:20240303"
+    testImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"
+}
+
+tasks.register("testUserApiPreload", Exec) {
+    group = "verification"
+    description = "Runs the lx user-api preload compatibility regression tests."
+    commandLine "node", "--test", "src/test/js/user-api-preload.test.js"
 }

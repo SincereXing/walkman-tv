@@ -15,6 +15,7 @@ import org.json.JSONTokener
 import java.io.IOException
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 /**
  * HTTP requests issued by JS user scripts via `lx.request`, ported from iOS `ScriptHTTPClient`.
@@ -45,30 +46,38 @@ class ScriptHttpClient(private val client: OkHttpClient) {
         }
         val binary = options.optBoolean("binary", false)
         val call = client.newCall(req)
+        val timeoutMs = options.optLong("timeout", 0L)
+        if (timeoutMs > 0L) call.timeout().timeout(timeoutMs, TimeUnit.MILLISECONDS)
         calls[requestKey] = call
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                calls.remove(requestKey)
-                if (call.isCanceled()) return
+                val wasActive = calls.remove(requestKey) != null
+                // Explicit cancellation removes the call before cancel(); a call timeout also
+                // marks it canceled, but must still be reported to the script callback.
+                if (!wasActive && call.isCanceled()) return
                 completion(e.message ?: "request failed", null)
             }
 
             override fun onResponse(call: Call, response: Response) {
                 calls.remove(requestKey)
                 response.use { resp ->
-                    val headers = mutableMapOf<String, String>()
-                    resp.headers.forEach { (k, v) -> headers[k.lowercase()] = v }
-                    val bytes = resp.body?.bytes()
-                    val bodyValue = decodeBody(bytes, binary)
-                    completion(
-                        null,
-                        ScriptResponse(
-                            statusCode = resp.code,
-                            statusMessage = resp.message.ifEmpty { statusText(resp.code) },
-                            headers = headers,
-                            body = bodyValue,
-                        ),
-                    )
+                    try {
+                        val headers = mutableMapOf<String, String>()
+                        resp.headers.forEach { (k, v) -> headers[k.lowercase()] = v }
+                        val bytes = resp.body?.bytes()
+                        val bodyValue = decodeBody(bytes, binary)
+                        completion(
+                            null,
+                            ScriptResponse(
+                                statusCode = resp.code,
+                                statusMessage = resp.message.ifEmpty { statusText(resp.code) },
+                                headers = headers,
+                                body = bodyValue,
+                            ),
+                        )
+                    } catch (e: IOException) {
+                        completion(e.message ?: "request failed", null)
+                    }
                 }
             }
         })

@@ -2,6 +2,100 @@
 
 globalThis.lx_setup = (key, id, name, description, version, author, homepage, rawScript) => {
   delete globalThis.lx_setup
+
+  // QuickJS does not provide the browser URLSearchParams global. Several lx sources build
+  // signed query strings with it, so keep a small compatible implementation in the sandbox.
+  if (typeof globalThis.URLSearchParams !== 'function') {
+    const decode = value => decodeURIComponent(String(value).replace(/\+/g, ' '))
+    const encode = value => encodeURIComponent(String(value)).replace(/%20/g, '+')
+    globalThis.URLSearchParams = class URLSearchParams {
+      #params = []
+
+      constructor(init = '') {
+        if (typeof init === 'string') {
+          const query = init.startsWith('?') ? init.substring(1) : init
+          if (query) {
+            for (const part of query.split('&')) {
+              const separator = part.indexOf('=')
+              const name = separator < 0 ? part : part.substring(0, separator)
+              const value = separator < 0 ? '' : part.substring(separator + 1)
+              this.append(decode(name), decode(value))
+            }
+          }
+        } else if (init && typeof init[Symbol.iterator] === 'function') {
+          for (const entry of init) this.append(entry[0], entry[1])
+        } else if (init && typeof init === 'object') {
+          for (const name of Object.keys(init)) this.append(name, init[name])
+        }
+      }
+
+      append(name, value) {
+        this.#params.push([String(name), String(value)])
+      }
+
+      set(name, value) {
+        name = String(name)
+        value = String(value)
+        let found = false
+        for (let i = 0; i < this.#params.length; i++) {
+          if (this.#params[i][0] !== name) continue
+          if (!found) {
+            this.#params[i][1] = value
+            found = true
+          } else {
+            this.#params.splice(i--, 1)
+          }
+        }
+        if (!found) this.#params.push([name, value])
+      }
+
+      get(name) {
+        name = String(name)
+        const entry = this.#params.find(item => item[0] === name)
+        return entry ? entry[1] : null
+      }
+
+      getAll(name) {
+        name = String(name)
+        return this.#params.filter(item => item[0] === name).map(item => item[1])
+      }
+
+      has(name) {
+        name = String(name)
+        return this.#params.some(item => item[0] === name)
+      }
+
+      delete(name) {
+        name = String(name)
+        for (let i = this.#params.length - 1; i >= 0; i--) {
+          if (this.#params[i][0] === name) this.#params.splice(i, 1)
+        }
+      }
+
+      forEach(callback, thisArg) {
+        for (let i = 0; i < this.#params.length; i++) {
+          const [name, value] = this.#params[i]
+          callback.call(thisArg, value, name, this)
+        }
+      }
+
+      *entries() {
+        for (let i = 0; i < this.#params.length; i++) {
+          const [name, value] = this.#params[i]
+          yield [name, value]
+        }
+      }
+
+      [Symbol.iterator]() {
+        return this.entries()
+      }
+
+      toString() {
+        return this.#params.map(([name, value]) => `${encode(name)}=${encode(value)}`).join('&')
+      }
+    }
+  }
+
   const _nativeCall = globalThis.__lx_native_call__
   delete globalThis.__lx_native_call__
   const checkLength = (str, length = 1048576) => {

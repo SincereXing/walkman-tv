@@ -65,6 +65,7 @@ import com.walkman.tv.ui.appContainer
 import com.walkman.tv.ui.components.QrDialog
 import com.walkman.tv.ui.components.TvFocusable
 import com.walkman.tv.ui.components.TvPill
+import com.walkman.tv.ui.components.leaveFieldOnDpadRight
 import com.walkman.tv.ui.theme.AppColors
 import com.walkman.tv.playback.update.UpdateState
 import kotlinx.coroutines.launch
@@ -74,6 +75,7 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val importFocus = remember { FocusRequester() }
     val settings by appContainer.settingsStore.settings.collectAsState()
     val scripts by appContainer.scriptStore.scripts.collectAsState()
     var url by remember { mutableStateOf("") }
@@ -387,7 +389,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     value = url,
                     onValueChange = { url = it },
                     singleLine = true,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .leaveFieldOnDpadRight(importFocus),
                     placeholder = { Text("URL（http://...）或直接粘贴 JS 代码", color = AppColors.TextMuted) },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { importInput(scope, url) { status = it } }),
@@ -400,7 +404,13 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     ),
                 )
                 Spacer(Modifier.width(8.dp))
-                TvPill(onClick = { importInput(scope, url) { status = it } }, selected = true) { Text("导入", fontSize = 14.sp) }
+                TvPill(
+                    onClick = { importInput(scope, url) { status = it } },
+                    selected = true,
+                    focusRequester = importFocus,
+                ) {
+                    Text("导入", fontSize = 14.sp)
+                }
                 Spacer(Modifier.width(8.dp))
                 TvPill(
                     onClick = {
