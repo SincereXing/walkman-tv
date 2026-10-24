@@ -183,7 +183,20 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     return
   }
 
-  Box(modifier = modifier.fillMaxSize().background(AppColors.BgDeep)) {
+  Box(
+    modifier = modifier
+      .fillMaxSize()
+      .background(AppColors.BgDeep)
+      // 兜底：焦点跑出播放页（漏到被盖住的主界面，或所在控件被移除）时拉回播放键。控件自动隐藏、
+      // 弹窗 / 播放队列打开时本来就不该在这里，跳过。状态在协程里重新读，避免用到旧值。
+      .onFocusChanged { fs ->
+        if (fs.hasFocus) return@onFocusChanged
+        scope.launch {
+          val stillWants = !state.isMv && !showMvQueue && !showEqDialog && !showPicker
+          if (stillWants && controlsVisible) tryRequestFocus(playFocus)
+        }
+      },
+  ) {
     CoverBackdrop(picURL = track?.picURL)
 
     if (track == null) {
@@ -578,6 +591,9 @@ private fun TransportBar(
   val repeatFocus = remember { FocusRequester() }
   val mvFocus = remember { FocusRequester() }
   val faveFocus = remember { FocusRequester() }
+  val tuneFocus = remember { FocusRequester() }
+  // 音质标签只在成功播放过后才有（第一首就失败时没有）。两侧的左右跳转都写死：交给系统按位置找
+  // 的话，没有标签时会找到被播放页盖住的主界面控件，焦点就丢了。
   val hasQuality = state.quality != null
 
   // 控制栏是浮层最底部，向下同样拦住，免得焦点漏到被盖住的主界面。
@@ -590,7 +606,11 @@ private fun TransportBar(
       IconPill(
         Icons.Filled.Tune,
         onClick = onTuneClick,
-        modifier = Modifier.focusProperties { left = FocusRequester.Cancel },
+        focusRequester = tuneFocus,
+        modifier = Modifier.focusProperties {
+          left = FocusRequester.Cancel
+          right = if (hasQuality) qualityFocus else repeatFocus
+        },
       )
       val displayed = com.walkman.tv.playback.displayQuality(state.quality, audioSpec)
       displayed?.let { q ->
@@ -628,7 +648,7 @@ private fun TransportBar(
         active = true,
         focusRequester = repeatFocus,
         onClick = onCycleRepeat,
-        modifier = if (hasQuality) Modifier.focusProperties { left = qualityFocus } else Modifier,
+        modifier = Modifier.focusProperties { left = if (hasQuality) qualityFocus else tuneFocus },
       )
       IconPill(Icons.Filled.SkipPrevious, onClick = onPrev)
       IconPill(
