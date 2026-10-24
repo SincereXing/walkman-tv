@@ -96,6 +96,7 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
   val context = androidx.compose.ui.platform.LocalContext.current
   var showMvQueue by remember { mutableStateOf(false) }
   val playFocus = remember { FocusRequester() }
+  val progressFocus = remember { FocusRequester() }
 
   val track = state.currentTrack
 
@@ -260,7 +261,13 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
       AnimatedVisibility(visible = controlsVisible) {
         Column {
           Spacer(Modifier.height(6.dp))
-          ProgressBar(state.positionMs, state.durationMs, onSeek = { controller.seekTo(it) })
+          ProgressBar(
+            state.positionMs,
+            state.durationMs,
+            onSeek = { controller.seekTo(it) },
+            focusRequester = progressFocus,
+            downFocusRequester = playFocus,
+          )
           Spacer(Modifier.height(14.dp))
           val audioSpec by controller.audioSpec.collectAsState()
           TransportBar(
@@ -303,6 +310,7 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             onShowQueue = { showMvQueue = true },
             onTuneClick = { showEqDialog = true },
             playFocusRequester = playFocus,
+            progressFocusRequester = progressFocus,
           )
         }
       }
@@ -571,20 +579,31 @@ private fun TransportBar(
   onShowQueue: () -> Unit,
   onTuneClick: () -> Unit,
   playFocusRequester: FocusRequester? = null,
+  progressFocusRequester: FocusRequester? = null,
 ) {
   val track = state.currentTrack
   val faved = track?.let { t -> love.tracks.any { it.id == t.id } } ?: false
+  val tuneFocus = remember { FocusRequester() }
   val qualityFocus = remember { FocusRequester() }
   val repeatFocus = remember { FocusRequester() }
-  val mvFocus = remember { FocusRequester() }
+  val prevFocus = remember { FocusRequester() }
+  val playFocus = playFocusRequester ?: remember { FocusRequester() }
+  val nextFocus = remember { FocusRequester() }
   val faveFocus = remember { FocusRequester() }
-  val tuneFocus = remember { FocusRequester() }
-  // 音质标签只在成功播放过后才有（第一首就失败时没有）。两侧的左右跳转都写死：交给系统按位置找
-  // 的话，没有标签时会找到被播放页盖住的主界面控件，焦点就丢了。
+  val mvFocus = remember { FocusRequester() }
+  val queueFocus = remember { FocusRequester() }
+  // 播放页盖在主界面上，主界面的控件仍在下面参与焦点查找。交给系统按位置找的话，会找到被盖住的
+  // 控件（比如推荐页迷你播放条的上一曲，#24），所以控制栏每个方向都写死。
+  // 音质标签只在成功播放过后才有（第一首就失败时没有），两侧的跳转按有无标签切换。
   val hasQuality = state.quality != null
 
-  // 控制栏是浮层最底部，向下同样拦住，免得焦点漏到被盖住的主界面。
-  Box(modifier = Modifier.fillMaxWidth().focusProperties { down = FocusRequester.Cancel }) {
+  // 向下拦住（控制栏在最底部），向上统一回进度条。
+  Box(
+    modifier = Modifier.fillMaxWidth().focusProperties {
+      down = FocusRequester.Cancel
+      if (progressFocusRequester != null) up = progressFocusRequester
+    },
+  ) {
     Row(
       modifier = Modifier.align(Alignment.CenterStart),
       verticalAlignment = Alignment.CenterVertically,
@@ -605,7 +624,10 @@ private fun TransportBar(
           onClick = { },
           selected = true,
           focusRequester = qualityFocus,
-          modifier = Modifier.focusProperties { right = repeatFocus },
+          modifier = Modifier.focusProperties {
+            left = tuneFocus
+            right = repeatFocus
+          },
           contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
         ) {
           Text(q.badgeLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -635,22 +657,48 @@ private fun TransportBar(
         active = true,
         focusRequester = repeatFocus,
         onClick = onCycleRepeat,
-        modifier = Modifier.focusProperties { left = if (hasQuality) qualityFocus else tuneFocus },
+        modifier = Modifier.focusProperties {
+          left = if (hasQuality) qualityFocus else tuneFocus
+          right = prevFocus
+        },
       )
-      IconPill(Icons.Filled.SkipPrevious, onClick = onPrev)
+      IconPill(
+        Icons.Filled.SkipPrevious,
+        focusRequester = prevFocus,
+        onClick = onPrev,
+        modifier = Modifier.focusProperties {
+          left = repeatFocus
+          right = playFocus
+        },
+      )
       IconPill(
         if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
         large = true,
-        focusRequester = playFocusRequester,
+        focusRequester = playFocus,
         onClick = onTogglePlay,
+        modifier = Modifier.focusProperties {
+          left = prevFocus
+          right = nextFocus
+        },
       )
-      IconPill(Icons.Filled.SkipNext, onClick = onNext)
+      IconPill(
+        Icons.Filled.SkipNext,
+        focusRequester = nextFocus,
+        onClick = onNext,
+        modifier = Modifier.focusProperties {
+          left = playFocus
+          right = faveFocus
+        },
+      )
       IconPill(
         if (faved) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
         active = faved,
         focusRequester = faveFocus,
         onClick = onToggleFav,
-        modifier = Modifier.focusProperties { right = mvFocus },
+        modifier = Modifier.focusProperties {
+          left = nextFocus
+          right = mvFocus
+        },
       )
     }
     Row(
@@ -661,15 +709,22 @@ private fun TransportBar(
       TvPill(
         onClick = onMv,
         focusRequester = mvFocus,
-        modifier = Modifier.focusProperties { left = faveFocus },
+        modifier = Modifier.focusProperties {
+          left = faveFocus
+          right = queueFocus
+        },
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
       ) {
         Text("MV", fontSize = 12.sp, fontWeight = FontWeight.Bold)
       }
       IconPill(
         Icons.AutoMirrored.Filled.QueueMusic,
+        focusRequester = queueFocus,
         onClick = onShowQueue,
-        modifier = Modifier.focusProperties { right = FocusRequester.Cancel },
+        modifier = Modifier.focusProperties {
+          left = mvFocus
+          right = FocusRequester.Cancel
+        },
       )
     }
   }
@@ -695,7 +750,13 @@ private const val SCRUB_RELEASE_TIMEOUT_MS = 1_000L
 
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-private fun ProgressBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) {
+private fun ProgressBar(
+  positionMs: Long,
+  durationMs: Long,
+  onSeek: (Long) -> Unit,
+  focusRequester: FocusRequester,
+  downFocusRequester: FocusRequester,
+) {
   var focused by remember { mutableStateOf(false) }
   var scrubDir by remember { mutableStateOf(0) }
   var previewMs by remember { mutableStateOf(0L) }
@@ -737,7 +798,11 @@ private fun ProgressBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Un
       .fillMaxWidth()
       // 播放页是盖在主界面上的浮层，进度条上方没有可聚焦控件；不拦住的话再按上键焦点会
       // 穿到被盖住的顶部导航，之后怎么按都回不来。
-      .focusProperties { up = FocusRequester.Cancel }
+      .focusRequester(focusRequester)
+      .focusProperties {
+        up = FocusRequester.Cancel
+        down = downFocusRequester
+      }
       .onFocusChanged { fs ->
         focused = fs.isFocused
         if (!fs.isFocused && scrubDir != 0) commit()
