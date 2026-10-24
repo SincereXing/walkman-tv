@@ -65,7 +65,7 @@ import com.walkman.tv.ui.appContainer
 import com.walkman.tv.ui.components.QrDialog
 import com.walkman.tv.ui.components.TvFocusable
 import com.walkman.tv.ui.components.TvPill
-import com.walkman.tv.ui.components.leaveFieldOnDpadRight
+import com.walkman.tv.ui.components.leaveFieldOnBack
 import com.walkman.tv.ui.theme.AppColors
 import com.walkman.tv.playback.update.UpdateState
 import kotlinx.coroutines.launch
@@ -391,7 +391,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     singleLine = true,
                     modifier = Modifier
                         .weight(1f)
-                        .leaveFieldOnDpadRight(importFocus),
+                        .leaveFieldOnBack(importFocus),
                     placeholder = { Text("URL（http://...）或直接粘贴 JS 代码", color = AppColors.TextMuted) },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { importInput(scope, url) { status = it } }),
