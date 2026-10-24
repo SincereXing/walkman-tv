@@ -183,20 +183,7 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     return
   }
 
-  Box(
-    modifier = modifier
-      .fillMaxSize()
-      .background(AppColors.BgDeep)
-      // 兜底：焦点跑出播放页（漏到被盖住的主界面，或所在控件被移除）时拉回播放键。控件自动隐藏、
-      // 弹窗 / 播放队列打开时本来就不该在这里，跳过。状态在协程里重新读，避免用到旧值。
-      .onFocusChanged { fs ->
-        if (fs.hasFocus) return@onFocusChanged
-        scope.launch {
-          val stillWants = !state.isMv && !showMvQueue && !showEqDialog && !showPicker
-          if (stillWants && controlsVisible) tryRequestFocus(playFocus)
-        }
-      },
-  ) {
+  Box(modifier = modifier.fillMaxSize().background(AppColors.BgDeep)) {
     CoverBackdrop(picURL = track?.picURL)
 
     if (track == null) {
