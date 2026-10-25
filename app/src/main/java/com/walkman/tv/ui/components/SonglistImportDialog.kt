@@ -133,8 +133,7 @@ fun SonglistImportDialog(onDismiss: () -> Unit) {
                         .then(fieldModifier)
                         .clip(RoundedCornerShape(10.dp))
                         .background(AppColors.BgDeep)
-                        .padding(horizontal = 14.dp, vertical = 12.dp)
-                        .leaveFieldOnBack(),
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
                     decorationBox = { inner ->
                         Box {
                             if (raw.isEmpty()) {

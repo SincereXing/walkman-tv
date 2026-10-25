@@ -76,6 +76,8 @@ fun leaveField(focusManager: FocusManager, keyboard: SoftwareKeyboardController?
  * 不这样做的话，焦点只要经过输入框，电视输入法就会在后台挂上，焦点移走后仍会截走下一次确认键，
  * 表现为附近的按钮、开关「第一次按没反应」，离开页面再回来才正常。
  *
+ * 按返回键收起键盘，焦点回到外壳上（调用方不用再加 [leaveFieldOnBack]）。
+ *
  * [content] 收到的 Modifier 要加在真正的输入框上。
  */
 @Composable
@@ -85,6 +87,7 @@ fun TvTextFieldHost(
     content: @Composable (fieldModifier: Modifier) -> Unit,
 ) {
     val fieldFocus = remember { FocusRequester() }
+    val hostFocus = remember { FocusRequester() }
     var editing by remember { mutableStateOf(false) }
     var hostFocused by remember { mutableStateOf(false) }
     var fieldHadFocus by remember { mutableStateOf(false) }
@@ -99,6 +102,7 @@ fun TvTextFieldHost(
     Box(
         modifier = modifier
             .border(2.dp, if (hostFocused) AppColors.Focus else Color.Transparent, shape)
+            .focusRequester(hostFocus)
             .onFocusChanged { hostFocused = it.isFocused }
             .onKeyEvent { evt ->
                 if (editing) return@onKeyEvent false
@@ -120,7 +124,9 @@ fun TvTextFieldHost(
                         fieldHadFocus = false
                         editing = false
                     }
-                },
+                }
+                // 返回键：收起键盘，焦点回到外壳上。
+                .leaveFieldOnBack(hostFocus),
         )
     }
 }
