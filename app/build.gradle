@@ -66,6 +66,10 @@ android {
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            // 测试版作为独立 App 安装：和正式版并存（签名不同不能互相覆盖），桌面名字是「随便听 Debug」
+            // （见 src/debug/res）。数据和正式版分开。
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
         }
         release {
             minifyEnabled false
@@ -109,6 +113,12 @@ android.applicationVariants.all { variant ->
         def abi = output.getFilter(OutputFile.ABI)
         def tag = abi ?: "universal"
         output.outputFileName = "walkman-tv-${variant.versionName}-${tag}-${variant.buildType.name}.apk"
+        // CI 上的测试包 versionCode 每次递增（正式版本号 × 100000 + 运行编号），测试包之间总能覆盖安装，
+        // 不会被电视安装器以「版本相同」拒绝。
+        def runNumber = System.getenv("GITHUB_RUN_NUMBER")
+        if (variant.buildType.name == "debug" && runNumber) {
+            output.versionCodeOverride = variant.versionCode * 100000 + (runNumber.toInteger() % 100000)
+        }
     }
 }
 
