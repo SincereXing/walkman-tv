@@ -84,6 +84,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     var status by remember { mutableStateOf<String?>(null) }
     var showQr by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<com.walkman.tv.data.model.UserScript?>(null) }
+    var updatingId by remember { mutableStateOf<String?>(null) }
 
     // System file picker (SAF) for .js scripts.
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -485,6 +486,33 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                                 }
                             }
                             Spacer(Modifier.width(12.dp))
+                            // 只有从链接导入的音源能更新（重新下载同一链接）；粘贴代码 / 上传文件导入的不显示。
+                            s.sourceUrl?.let { link ->
+                                TvPill(
+                                    onClick = {
+                                        if (updatingId != null) return@TvPill
+                                        updatingId = s.id
+                                        status = "正在更新「${s.name}」…"
+                                        appContainer.appScope.launch {
+                                            val r = runCatching {
+                                                val raw = appContainer.fetchText(link)
+                                                appContainer.scriptStore.import(raw, sourceUrl = link, replaceId = s.id).getOrThrow()
+                                            }
+                                            val msg = r.fold({ it.message }, { "更新失败：${it.message}" })
+                                            status = msg
+                                            updatingId = null
+                                            // 状态行在输入框下方，列表长时看不到，再弹个提示。
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+                                ) {
+                                    Text(if (updatingId == s.id) "更新中…" else "更新", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(Modifier.width(8.dp))
+                            }
                             TvPill(
                                 onClick = { pendingDelete = s },
                                 accent = AppColors.Danger,
@@ -597,7 +625,7 @@ private fun importInput(scope: kotlinx.coroutines.CoroutineScope, input: String,
         onStatus(if (isUrl) "正在下载脚本…" else "正在导入脚本…")
         val result = runCatching {
             val raw = if (isUrl) appContainer.fetchText(trimmed) else trimmed
-            appContainer.scriptStore.import(raw).getOrThrow()
+            appContainer.scriptStore.import(raw, sourceUrl = trimmed.takeIf { isUrl }).getOrThrow()
         }
         onStatus(result.fold({ it.message }, { "导入失败：${it.message}" }))
     }
@@ -610,7 +638,7 @@ private fun importFromUrl(scope: kotlinx.coroutines.CoroutineScope, url: String,
         onStatus("正在导入…")
         val result = runCatching {
             val raw = appContainer.fetchText(url.trim())
-            appContainer.scriptStore.import(raw).getOrThrow()
+            appContainer.scriptStore.import(raw, sourceUrl = url.trim()).getOrThrow()
         }
         onStatus(result.fold({ it.message }, { "导入失败：${it.message}" }))
     }

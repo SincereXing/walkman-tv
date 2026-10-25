@@ -32,9 +32,10 @@ class ScriptStore(private val context: Context, private val sourceManager: Sourc
 
     /** Result of [import]: [replaced] is the older copy of the same script (same name + author)
      *  that this import updated in place, or null when it was added as a new source. */
-    data class Imported(val script: UserScript, val replaced: UserScript?) {
+    data class Imported(val script: UserScript, val replaced: UserScript?, val unchanged: Boolean = false) {
         val message: String
-            get() = if (replaced == null) "已添加音源：${script.name}"
+            get() = if (unchanged) "「${script.name}」已是最新版本"
+            else if (replaced == null) "已添加音源：${script.name}"
             else "已更新音源：${script.name}（替换了同名旧版本${replaced.version.takeIf { it.isNotBlank() }?.let { " v$it" } ?: ""}）"
     }
 
@@ -45,9 +46,9 @@ class ScriptStore(private val context: Context, private val sourceManager: Sourc
      * stayed loaded in [SourceManager] invisibly — and same-named scripts by different authors
      * are kept side by side instead of silently overwriting each other.
      */
-    suspend fun import(raw: String): Result<Imported> {
+    suspend fun import(raw: String, sourceUrl: String? = null, replaceId: String? = null): Result<Imported> {
         val meta = parseHeader(raw)
-        val script = UserScript(
+        val parsed = UserScript(
             name = meta["name"] ?: "未命名脚本",
             description = meta["description"] ?: "",
             version = meta["version"] ?: "",
@@ -56,7 +57,19 @@ class ScriptStore(private val context: Context, private val sourceManager: Sourc
             rawScript = raw,
             enabled = true,
         )
-        val old = _scripts.value.firstOrNull { it.name == script.name && it.author == script.author }
+        // [replaceId]：「更新」时明确替换哪一个（新版本改了名字 / 作者也照样替换）；否则按名字 + 作者匹配。
+        val old = replaceId?.let { id -> _scripts.value.firstOrNull { it.id == id } }
+            ?: _scripts.value.firstOrNull { it.name == parsed.name && it.author == parsed.author }
+        if (old != null && old.rawScript == raw) {
+            // 内容没变：不重新加载，只补记链接（以前从链接导入的音源，用同一链接再导入一次就能「更新」了）。
+            if (sourceUrl != null && old.sourceUrl != sourceUrl) {
+                _scripts.value = _scripts.value.map { if (it.id == old.id) it.copy(sourceUrl = sourceUrl) else it }
+                persist()
+            }
+            return Result.success(Imported(old, old, unchanged = true))
+        }
+        // 粘贴代码更新一个原本从链接导入的音源时，保留原链接，之后还能继续「更新」。
+        val script = parsed.copy(sourceUrl = sourceUrl ?: old?.sourceUrl)
         val result = sourceManager.load(script)
         return result.fold(
             onSuccess = {

@@ -15,6 +15,8 @@ data class UserScript(
     val rawScript: String,
     val importedAt: Long = System.currentTimeMillis(),
     val enabled: Boolean = true,
+    /** 从链接导入时记下的地址，用来「更新」重新下载；粘贴代码 / 上传文件导入的没有。 */
+    val sourceUrl: String? = null,
 )
 
 /** Capabilities a script reports via `lx.send('inited', { sources })`. */
