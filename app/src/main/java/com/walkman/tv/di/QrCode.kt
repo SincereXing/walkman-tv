@@ -11,11 +11,7 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 fun encodeQrToBitmap(text: String, size: Int = 512): Bitmap? = runCatching {
     val hints = mapOf(EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M, EncodeHintType.MARGIN to 1)
     val matrix = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size, hints)
-    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    for (x in 0 until size) {
-        for (y in 0 until size) {
-            bmp.setPixel(x, y, if (matrix[x, y]) Color.BLACK else Color.WHITE)
-        }
-    }
-    bmp
+    // 先填 IntArray 再一次 setPixels：逐个 setPixel 是 26 万次 JNI 调用，电视 CPU 上首次要卡一两秒。
+    val pixels = IntArray(size * size) { i -> if (matrix[i % size, i / size]) Color.BLACK else Color.WHITE }
+    Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).apply { setPixels(pixels, 0, size, 0, 0, size, size) }
 }.getOrNull()

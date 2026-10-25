@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +31,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.Text
 import com.walkman.tv.di.encodeQrToBitmap
 import com.walkman.tv.ui.theme.AppColors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Centered dialog showing a QR code + the encoded URL. Useful for phone-to-TV flows where the
@@ -41,7 +45,14 @@ fun QrDialog(
     subtitle: String,
     onDismiss: () -> Unit,
 ) {
-    val bitmap = remember(url) { encodeQrToBitmap(url, 512) }
+    // 二维码在后台线程生成，弹窗先出来。以前在主线程生成，首次打开会卡住界面，用户以为没点中
+    // 又按确认，积压的按键在弹窗出现后落到「关闭」上，弹窗一闪就没了。
+    // first = 是否还在生成，second = 结果（null 表示生成失败）。
+    val qr by produceState<Pair<Boolean, android.graphics.Bitmap?>>(true to null, url) {
+        value = false to withContext(Dispatchers.Default) { encodeQrToBitmap(url, 512) }
+    }
+    val (generating, bitmap) = qr
+    val openedAt = remember { android.os.SystemClock.uptimeMillis() }
     val closeFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { closeFocus.requestFocus() } }
 
@@ -81,7 +92,7 @@ fun QrDialog(
                     }
                 } else {
                     Box(modifier = Modifier.size(220.dp), contentAlignment = Alignment.Center) {
-                        Text("无法生成二维码", color = AppColors.TextMuted)
+                        Text(if (generating) "正在生成二维码…" else "无法生成二维码", color = AppColors.TextMuted)
                     }
                 }
                 Spacer(Modifier.height(10.dp))
@@ -107,7 +118,8 @@ fun QrDialog(
                 }
                 Spacer(Modifier.height(12.dp))
                 TvPill(
-                    onClick = onDismiss,
+                    // 弹窗刚出现的一小段时间里忽略「关闭」，防止打开它的那次确认键（或连按的）把它立刻关掉。
+                    onClick = { if (android.os.SystemClock.uptimeMillis() - openedAt > 500) onDismiss() },
                     selected = true,
                     focusRequester = closeFocus,
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
