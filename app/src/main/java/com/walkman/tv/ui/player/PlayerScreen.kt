@@ -59,6 +59,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Brush
@@ -165,11 +166,74 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
   }
 
   if (state.isMv) {
-    Box(modifier = modifier.fillMaxSize().background(AppColors.BgDeep)) {
+    // MV：不用 PlayerView 自带的控制条（遥控器上没法拖进度），换成自己的进度条。进度条一直持有
+    // 焦点，左右键快退 / 快进（长按加速），确认键暂停 / 继续；有按键时显示，空闲 3 秒淡出。
+    val mvProgressFocus = remember { FocusRequester() }
+    var mvOverlayTick by remember { mutableStateOf(0) }
+    var mvOverlayVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(mvOverlayTick) {
+      mvOverlayVisible = true
+      delay(MV_OVERLAY_HIDE_MS)
+      mvOverlayVisible = false
+    }
+    LaunchedEffect(showMvQueue) {
+      if (!showMvQueue) tryRequestFocus(mvProgressFocus)
+    }
+    val overlayAlpha by androidx.compose.animation.core.animateFloatAsState(
+      if (mvOverlayVisible || !state.isPlaying) 1f else 0f,
+      label = "mvOverlay",
+    )
+    Box(
+      modifier = modifier
+        .fillMaxSize()
+        .background(AppColors.BgDeep)
+        .onPreviewKeyEvent { evt ->
+          if (evt.type == KeyEventType.KeyDown) mvOverlayTick++
+          false
+        },
+    ) {
       AndroidView(
-        factory = { ctx -> PlayerView(ctx).apply { player = controller.player; useController = true } },
+        factory = { ctx -> PlayerView(ctx).apply { player = controller.player; useController = false } },
         modifier = Modifier.fillMaxSize(),
       )
+      Column(
+        modifier = Modifier
+          .align(Alignment.BottomCenter)
+          .fillMaxWidth()
+          .alpha(overlayAlpha)
+          .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f))))
+          .padding(horizontal = 48.dp, vertical = 28.dp)
+          .onKeyEvent { evt ->
+            val isOk = evt.key == Key.DirectionCenter || evt.key == Key.Enter || evt.key == Key.NumPadEnter
+            if (!isOk) return@onKeyEvent false
+            if (evt.type == KeyEventType.KeyUp) controller.togglePlay()
+            true
+          },
+      ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(
+            if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+            contentDescription = null,
+            tint = AppColors.TextPrimary,
+            modifier = Modifier.size(22.dp),
+          )
+          Spacer(Modifier.width(8.dp))
+          Text(
+            state.currentTrack?.let { "${it.name} - ${it.singer}" } ?: "",
+            color = AppColors.TextPrimary,
+            fontSize = 15.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+          )
+        }
+        Spacer(Modifier.height(10.dp))
+        ProgressBar(
+          state.positionMs,
+          state.durationMs,
+          onSeek = { controller.seekTo(it) },
+          focusRequester = mvProgressFocus,
+        )
+      }
       MvQueueDrawer(
         visible = showMvQueue,
         queue = state.queue,
@@ -732,6 +796,7 @@ private fun TransportBar(
 }
 
 private const val AUTO_HIDE_MS = 5_000L
+private const val MV_OVERLAY_HIDE_MS = 3_000L
 /** 控件隐藏时用来唤出控件的键：方向键 + 确认键。 */
 private val WAKE_KEYS = setOf(
   android.view.KeyEvent.KEYCODE_DPAD_UP,
@@ -756,7 +821,7 @@ private fun ProgressBar(
   durationMs: Long,
   onSeek: (Long) -> Unit,
   focusRequester: FocusRequester,
-  downFocusRequester: FocusRequester,
+  downFocusRequester: FocusRequester? = null,
 ) {
   var focused by remember { mutableStateOf(false) }
   var scrubDir by remember { mutableStateOf(0) }
@@ -802,7 +867,10 @@ private fun ProgressBar(
       .focusRequester(focusRequester)
       .focusProperties {
         up = FocusRequester.Cancel
-        down = downFocusRequester
+        down = downFocusRequester ?: FocusRequester.Cancel
+        // 左右键本来就被拖动进度消费；时长还没拿到时不消费，也别让焦点按位置跑出去。
+        left = FocusRequester.Cancel
+        right = FocusRequester.Cancel
       }
       .onFocusChanged { fs ->
         focused = fs.isFocused

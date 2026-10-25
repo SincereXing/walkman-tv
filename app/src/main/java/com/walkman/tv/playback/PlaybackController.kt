@@ -579,7 +579,12 @@ class PlaybackController(
         playAt(prevIdx)
     }
 
-    fun seekTo(ms: Long) = player.seekTo(ms.coerceAtLeast(0))
+    fun seekTo(ms: Long) {
+        val target = ms.coerceAtLeast(0)
+        player.seekTo(target)
+        // 立即更新，进度条不用等下一次 1 秒轮询，拖完不会先跳回旧位置。
+        _state.value = _state.value.copy(positionMs = target)
+    }
 
     fun setRepeatMode(mode: RepeatMode) { _state.value = _state.value.copy(repeatMode = mode) }
 
