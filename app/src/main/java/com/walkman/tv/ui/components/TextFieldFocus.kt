@@ -31,6 +31,12 @@ import androidx.compose.ui.input.key.onInterceptKeyBeforeSoftKeyboard
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.view.WindowManager
 import androidx.compose.ui.platform.SoftwareKeyboardController
 
 /**
@@ -91,8 +97,19 @@ fun TvTextFieldHost(
     var editing by remember { mutableStateOf(false) }
     var hostFocused by remember { mutableStateOf(false) }
     var fieldHadFocus by remember { mutableStateOf(false) }
+    // 输入框所在的窗口（弹窗里是弹窗自己的窗口）。不在输入时给窗口加 FLAG_ALT_FOCUSABLE_IM，让它暂时
+    // 不接收输入法：键盘弹出过一次后，输入法会一直挂在窗口上，系统分发按键时先交给它，下一次确认键
+    // 就被吃掉了（设置页开关「第一次按没反应」）。按确认开始输入时先去掉这个标志，再把焦点交给输入框。
+    val view = LocalView.current
+    val window = remember(view) { (view.parent as? DialogWindowProvider)?.window ?: view.context.findActivity()?.window }
     LaunchedEffect(editing) {
-        if (!editing) return@LaunchedEffect
+        val flag = WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+        if (!editing) {
+            runCatching { window?.addFlags(flag) }
+            return@LaunchedEffect
+        }
+        runCatching { window?.clearFlags(flag) }
+        delay(50)
         repeat(10) {
             if (runCatching { fieldFocus.requestFocus() }.isSuccess) return@LaunchedEffect
             delay(30)
@@ -129,4 +146,10 @@ fun TvTextFieldHost(
                 .leaveFieldOnBack(hostFocus),
         )
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
