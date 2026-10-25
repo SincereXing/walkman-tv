@@ -1,6 +1,7 @@
 package com.walkman.tv.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import android.os.Build
 import android.os.Environment
@@ -157,11 +159,20 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    // 首尾两块获得焦点时直接滚到顶 / 底：系统只保证焦点控件本身可见，不管它上面的分区标题，
+    // 也不算放大后的选中框，结果顶部「播放音质」标题被遮、底部更新按钮露出屏幕一点。
+    val scrollState = rememberScrollState()
     Column(
-        modifier = modifier.fillMaxSize().padding(top = 8.dp).verticalScroll(rememberScrollState()),
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(top = 8.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Section("播放音质") {
+        Section(
+            "播放音质",
+            modifier = Modifier.onFocusChanged { if (it.hasFocus) scope.launch { scrollState.animateScrollTo(0) } },
+        ) {
             // 8 tiers including extended (hires/atmos/master) — wrap so they fit on any TV width.
             // Each pill carries a small icon to make the tier intent scannable in one glance.
             androidx.compose.foundation.layout.FlowRow(
@@ -497,7 +508,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        UpdateSection()
+        Box(Modifier.onFocusChanged { if (it.hasFocus) scope.launch { scrollState.animateScrollTo(scrollState.maxValue) } }) {
+            UpdateSection()
+        }
     }
 
     pendingDelete?.let { target ->
@@ -683,8 +696,8 @@ private fun UpdateSection() {
 }
 
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun Section(title: String, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, color = AppColors.AccentGreen, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         content()
     }
