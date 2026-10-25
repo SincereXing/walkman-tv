@@ -231,6 +231,7 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             lyrics,
             state.positionMs,
             lyricSize = lyricSize,
+            showTranslation = settings.showLyricTranslation,
             modifier = Modifier.fillMaxWidth().weight(1f),
           )
         }
@@ -864,6 +865,7 @@ private fun LyricPane(
   lyrics: List<com.walkman.tv.playback.LyricLine>,
   positionMs: Long,
   lyricSize: com.walkman.tv.data.store.LyricSize,
+  showTranslation: Boolean,
   modifier: Modifier = Modifier,
 ) {
   if (lyrics.isEmpty()) {
@@ -897,7 +899,7 @@ private fun LyricPane(
           textAlign = TextAlign.Center,
           modifier = Modifier.alpha(a),
         )
-        line.translation?.let {
+        line.translation?.takeIf { showTranslation }?.let {
           Text(
             it,
             color = if (isActive) AppColors.LyricActive.copy(alpha = 0.7f) else AppColors.TextMuted,

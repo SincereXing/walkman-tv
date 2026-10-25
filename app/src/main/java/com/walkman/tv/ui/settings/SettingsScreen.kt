@@ -229,7 +229,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         }
 
         Section("歌词翻译") {
-            ToggleRow("显示歌词翻译", settings.showLyricTranslation) {
+            ToggleRow("显示歌词翻译（外语歌有翻译时在每句下方显示）", settings.showLyricTranslation) {
                 scope.launch { appContainer.settingsStore.update { it.copy(showLyricTranslation = !it.showLyricTranslation) } }
             }
         }
