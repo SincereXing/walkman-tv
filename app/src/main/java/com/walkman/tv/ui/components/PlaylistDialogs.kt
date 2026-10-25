@@ -269,47 +269,50 @@ fun PlaylistNameDialog(
 
             // Real editable text field — Compose brings up the system IME on focus, supporting
             // whichever Chinese / pinyin keyboard the user has installed.
-            androidx.compose.foundation.text.BasicTextField(
-                value = name,
-                onValueChange = { v -> if (v.length <= 24) name = v },
-                singleLine = true,
-                textStyle = androidx.compose.ui.text.TextStyle(
-                    color = AppColors.TextPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                ),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(AppColors.AccentGreen),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    imeAction = androidx.compose.ui.text.input.ImeAction.Done,
-                ),
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                    onDone = {
-                        val trimmed = name.trim()
-                        if (trimmed.isNotEmpty()) onConfirm(trimmed)
-                    },
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(AppColors.BgDeep)
-                    .padding(horizontal = 14.dp, vertical = 14.dp)
-                    .leaveFieldOnBack(),
-                decorationBox = { inner ->
-                    Box {
-                        if (name.isEmpty()) {
-                            Text(
-                                "请输入歌单名（按确认键调出系统输入法）",
-                                color = AppColors.TextMuted,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+            TvTextFieldHost(modifier = Modifier.fillMaxWidth()) { fieldModifier ->
+                androidx.compose.foundation.text.BasicTextField(
+                    value = name,
+                    onValueChange = { v -> if (v.length <= 24) name = v },
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        color = AppColors.TextPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(AppColors.AccentGreen),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onDone = {
+                            val trimmed = name.trim()
+                            if (trimmed.isNotEmpty()) onConfirm(trimmed)
+                        },
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(fieldModifier)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(AppColors.BgDeep)
+                        .padding(horizontal = 14.dp, vertical = 14.dp)
+                        .leaveFieldOnBack(),
+                    decorationBox = { inner ->
+                        Box {
+                            if (name.isEmpty()) {
+                                Text(
+                                    "请输入歌单名（按确认键调出系统输入法）",
+                                    color = AppColors.TextMuted,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            inner()
                         }
-                        inner()
-                    }
-                },
-            )
+                    },
+                )
+            }
             Spacer(Modifier.size(6.dp))
             Text(
                 "中文输入不便？点击「手机扫码输入」用手机键盘",

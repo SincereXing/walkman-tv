@@ -111,43 +111,46 @@ fun SonglistImportDialog(onDismiss: () -> Unit) {
 
             Text("歌单链接", color = AppColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.size(6.dp))
-            BasicTextField(
-                value = raw,
-                onValueChange = {
-                    raw = it
-                    errorText = null
-                },
-                singleLine = true,
-                textStyle = TextStyle(
-                    color = AppColors.TextPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
-                cursorBrush = SolidColor(AppColors.AccentGreen),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                // Done: keep the dialog open (no submit) but step off the field so the remote can reach 导入.
-                keyboardActions = KeyboardActions(onDone = { leaveField(focusManager, keyboard) }),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(AppColors.BgDeep)
-                    .padding(horizontal = 14.dp, vertical = 12.dp)
-                    .leaveFieldOnBack(),
-                decorationBox = { inner ->
-                    Box {
-                        if (raw.isEmpty()) {
-                            Text(
-                                "粘贴链接或纯数字 ID（手机扫码更省事）",
-                                color = AppColors.TextMuted,
-                                fontSize = 14.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+            TvTextFieldHost(modifier = Modifier.fillMaxWidth()) { fieldModifier ->
+                BasicTextField(
+                    value = raw,
+                    onValueChange = {
+                        raw = it
+                        errorText = null
+                    },
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        color = AppColors.TextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                    cursorBrush = SolidColor(AppColors.AccentGreen),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    // Done: keep the dialog open (no submit) but step off the field so the remote can reach 导入.
+                    keyboardActions = KeyboardActions(onDone = { leaveField(focusManager, keyboard) }),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(fieldModifier)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(AppColors.BgDeep)
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                        .leaveFieldOnBack(),
+                    decorationBox = { inner ->
+                        Box {
+                            if (raw.isEmpty()) {
+                                Text(
+                                    "粘贴链接或纯数字 ID（手机扫码更省事）",
+                                    color = AppColors.TextMuted,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            inner()
                         }
-                        inner()
-                    }
-                },
-            )
+                    },
+                )
+            }
             Spacer(Modifier.size(6.dp))
             when {
                 parsedRef != null -> Text(

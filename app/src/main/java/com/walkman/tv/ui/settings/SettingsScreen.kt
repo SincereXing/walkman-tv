@@ -66,6 +66,7 @@ import com.walkman.tv.ui.components.QrDialog
 import com.walkman.tv.ui.components.TvFocusable
 import com.walkman.tv.ui.components.TvPill
 import com.walkman.tv.ui.components.leaveFieldOnBack
+import com.walkman.tv.ui.components.TvTextFieldHost
 import com.walkman.tv.ui.theme.AppColors
 import com.walkman.tv.playback.update.UpdateState
 import kotlinx.coroutines.launch
@@ -385,24 +386,27 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 fontSize = 12.sp,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    singleLine = true,
-                    modifier = Modifier
-                        .weight(1f)
-                        .leaveFieldOnBack(importFocus),
-                    placeholder = { Text("URL（http://...）或直接粘贴 JS 代码", color = AppColors.TextMuted) },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { importInput(scope, url) { status = it } }),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = AppColors.TextPrimary,
-                        unfocusedTextColor = AppColors.TextPrimary,
-                        focusedBorderColor = AppColors.AccentGreen,
-                        unfocusedBorderColor = AppColors.Card,
-                        cursorColor = AppColors.AccentGreen,
-                    ),
-                )
+                TvTextFieldHost(modifier = Modifier.weight(1f), shape = RoundedCornerShape(4.dp)) { fieldModifier ->
+                    OutlinedTextField(
+                        value = url,
+                        onValueChange = { url = it },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(fieldModifier)
+                            .leaveFieldOnBack(importFocus),
+                        placeholder = { Text("URL（http://...）或直接粘贴 JS 代码", color = AppColors.TextMuted) },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { importInput(scope, url) { status = it } }),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = AppColors.TextPrimary,
+                            unfocusedTextColor = AppColors.TextPrimary,
+                            focusedBorderColor = AppColors.AccentGreen,
+                            unfocusedBorderColor = AppColors.Card,
+                            cursorColor = AppColors.AccentGreen,
+                        ),
+                    )
+                }
                 Spacer(Modifier.width(8.dp))
                 TvPill(
                     onClick = { importInput(scope, url) { status = it } },

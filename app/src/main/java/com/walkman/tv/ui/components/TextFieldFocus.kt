@@ -1,6 +1,24 @@
 package com.walkman.tv.ui.components
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.unit.dp
+import com.walkman.tv.ui.theme.AppColors
+import kotlinx.coroutines.delay
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
@@ -49,4 +67,60 @@ fun Modifier.leaveFieldOnBack(target: FocusRequester? = null): Modifier {
 fun leaveField(focusManager: FocusManager, keyboard: SoftwareKeyboardController?) {
     runCatching { keyboard?.hide() }
     if (!focusManager.moveFocus(FocusDirection.Down)) focusManager.clearFocus(force = true)
+}
+
+/**
+ * 电视上的输入框外壳：遥控器移动焦点时只停在外壳上（显示选中框），不激活输入法；按确认键才把
+ * 焦点交给里面的输入框、弹出键盘，输入框失去焦点后退回外壳状态。
+ *
+ * 不这样做的话，焦点只要经过输入框，电视输入法就会在后台挂上，焦点移走后仍会截走下一次确认键，
+ * 表现为附近的按钮、开关「第一次按没反应」，离开页面再回来才正常。
+ *
+ * [content] 收到的 Modifier 要加在真正的输入框上。
+ */
+@Composable
+fun TvTextFieldHost(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(10.dp),
+    content: @Composable (fieldModifier: Modifier) -> Unit,
+) {
+    val fieldFocus = remember { FocusRequester() }
+    var editing by remember { mutableStateOf(false) }
+    var hostFocused by remember { mutableStateOf(false) }
+    var fieldHadFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(editing) {
+        if (!editing) return@LaunchedEffect
+        repeat(10) {
+            if (runCatching { fieldFocus.requestFocus() }.isSuccess) return@LaunchedEffect
+            delay(30)
+        }
+        editing = false
+    }
+    Box(
+        modifier = modifier
+            .border(2.dp, if (hostFocused) AppColors.Focus else Color.Transparent, shape)
+            .onFocusChanged { hostFocused = it.isFocused }
+            .onKeyEvent { evt ->
+                if (editing) return@onKeyEvent false
+                val isOk = evt.key == Key.DirectionCenter || evt.key == Key.Enter || evt.key == Key.NumPadEnter
+                if (!isOk) return@onKeyEvent false
+                if (evt.type == KeyEventType.KeyUp) editing = true
+                true
+            }
+            .focusable(),
+    ) {
+        content(
+            Modifier
+                .focusRequester(fieldFocus)
+                .focusProperties { canFocus = editing }
+                .onFocusChanged { fs ->
+                    if (fs.isFocused) {
+                        fieldHadFocus = true
+                    } else if (fieldHadFocus) {
+                        fieldHadFocus = false
+                        editing = false
+                    }
+                },
+        )
+    }
 }
