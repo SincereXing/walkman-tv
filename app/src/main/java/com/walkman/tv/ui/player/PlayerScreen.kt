@@ -193,7 +193,15 @@ fun PlayerScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         },
     ) {
       AndroidView(
-        factory = { ctx -> PlayerView(ctx).apply { player = controller.player; useController = false } },
+        factory = { ctx ->
+          PlayerView(ctx).apply {
+            player = controller.player
+            useController = false
+            // 只负责画面，不能拿焦点，否则按键到不了 Compose 的进度条。
+            isFocusable = false
+            descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+          }
+        },
         modifier = Modifier.fillMaxSize(),
       )
       Column(
